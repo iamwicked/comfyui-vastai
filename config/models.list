@@ -27,8 +27,8 @@
 
 # --- Aadi's Civitai picks (resolved 2026-09-24) ---
 # Requires CIVITAI_TOKEN env var on the instance.
-# 1. InstaPic UltraReal — style LoRA for Flux.2 Klein 9B (158 MB)
-lora|V3_flux_klein.safetensors|civitai|2998522|
+# 1. InstaPic UltraReal — REMOVED 2026-09-24 (with the Flux.2 Klein 9B stack, below:
+#    black-forest-labs/FLUX.2-klein-9B requires HF *approval* — access denied).
 # 2. IntoRealism ZIT V9.0 — photorealism checkpoint, Z-Image Turbo, fp8 (6.0 GB)
 checkpoint|intorealism_zitV90.safetensors|civitai|3258780|
 # 3. Uncensored Wan 2.2 Remix — i2v WORKFLOW archive (8 KB zip)
@@ -42,12 +42,18 @@ workflow|uncensoredWan22Remix_v10.zip|civitai|2415176|
 #    Runs on your own machine; can point at the Vast.ai Ollama (port 11434) as its backend.
 
 # --- Base weights the picks above NEED (verified 2026-09-24) ---
-# InstaPic LoRA -> Flux.2 Klein 9B base.
-# NOTE: black-forest-labs/FLUX.2-klein-9B is GATED — accept the license on its
-# HF page and set HF_TOKEN on the instance, or the download will fail.
-diffusion|flux-2-klein-9b.safetensors|hf|black-forest-labs/FLUX.2-klein-9B::flux-2-klein-9b.safetensors|
-text_encoder|qwen_3_8b_fp8mixed.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors|
-vae|flux2-vae.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/vae/flux2-vae.safetensors|
+# Flux.2 Klein 9B stack — REMOVED 2026-09-24.
+# black-forest-labs/FLUX.2-klein-9B requires *APPROVAL* (not just a license
+# click-through): hf download fails with "Access denied. This repository
+# requires approval." Until approval is granted, the base, its Qwen3-8B
+# encoder, the Flux2 VAE, the InstaPic LoRA, and both Flux workflows stay out.
+# To restore, un-comment:
+# diffusion|flux-2-klein-9b.safetensors|hf|black-forest-labs/FLUX.2-klein-9B::flux-2-klein-9b.safetensors|
+# text_encoder|qwen_3_8b_fp8mixed.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors|
+# vae|flux2-vae.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/vae/flux2-vae.safetensors|
+# lora|V3_flux_klein.safetensors|civitai|2998522|
+# workflow|flux_2_klein_9b_text2image.json|url|https://raw.githubusercontent.com/nomadoor/comfy-with-comfyui/main/src/workflows/basic-workflows/flux-2-klein/9b/flux_2_klein_9b_text2image.json|
+# workflow|image_flux2_klein_image_edit_9b_base.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_flux2_klein_image_edit_9b_base.json|
 # Wan 2.2 i2v workflow -> Wan2.2-I2V-A14B (high-noise + low-noise DiT), UMT5 text
 # encoder, and the Wan 2.1 VAE (shared with Wan 2.2 in ComfyUI).
 diffusion|wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|
@@ -98,18 +104,12 @@ diffusion|Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors|hf|FX-FeiHou/
 diffusion|Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors|hf|limiao1666/qw_nsfw|
 text_encoder|nsfw_wan_umt5-xxl_fp8_scaled.safetensors|hf|Osrivers/nsfw_wan_umt5-xxl_fp8_scaled.safetensors|
 # 10. Example workflows for the remaining model stacks (plain JSONs, direct URL).
-#     FLUX.2 Klein 9B: after loading, reselect UNET -> flux-2-klein-9b.safetensors,
-#       CLIP -> qwen_3_8b_fp8mixed.safetensors (type "flux2"), add LoraLoaderModelOnly
-#       with V3_flux_klein.safetensors @ 1.0. Defaults (4 steps / euler / cfg 1)
-#       already match the creator's guidance; trigger words: instapic, hard flash,
-#       camera flash, smartphone photo, candid, shot on iphone, high detail skin.
 #     Qwen-Image 2.1: insert LoraLoaderModelOnly (lenovo_qwen21.safetensors @ 0.7)
 #       after UNETLoader; KSampler 50 steps / cfg 4 / res_2s / beta
 #       (res_2s needs the RES4LYF nodes, see config/nodes.txt).
 #     Krea 2: fully native nodes; set lora_name -> lenovo_krea2_3000.safetensors
 #       @ 0.8, unet_name -> krea2_raw_fp8_scaled.safetensors, ~52 steps / cfg 3.5-4.
 #       (Turbo defaults 8 steps / cfg 1 also work with the LoRA at 1.2-2.0.)
-workflow|flux_2_klein_9b_text2image.json|url|https://raw.githubusercontent.com/nomadoor/comfy-with-comfyui/main/src/workflows/basic-workflows/flux-2-klein/9b/flux_2_klein_9b_text2image.json|
 workflow|image_qwen_image_2_1_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_t2i.json|
 workflow|image_krea2_turbo_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_krea2_turbo_t2i.json|
 # 11. Image-to-image / reference-image workflows (added 2026-09-24).
@@ -118,22 +118,16 @@ workflow|image_krea2_turbo_t2i.json|url|https://raw.githubusercontent.com/Comfy-
 #        references (mention as <img>1</img>, <img>2</img> ... in the prompt).
 #        Uses the exact 2.1 base/encoder/VAE already downloaded above —
 #        NO new models needed. 25 steps / euler / cfg 1.
-#     b) image_flux2_klein_image_edit_9b_base.json — Flux.2 Klein 9B edit.
-#        1 reference image (+ a disabled 2nd group: select all, Ctrl-B to enable
-#        dual-reference). After loading, reselect UNET -> flux-2-klein-9b.safetensors
-#        and VAE -> flux2-vae.safetensors (the template's default filenames are
-#        the same weights under different names). 20 steps / euler / cfg 5.
-#        NO new downloads.
-#     c) image_qwen_image_edit_2509.json — dedicated multi-image edit model
+#     b) image_qwen_image_edit_2509.json — dedicated multi-image edit model
 #        (image + optional image2/image3). Needs the 2509 edit base + Qwen2.5-VL
 #        7B encoder + Lightning 4-step LoRA (added below). Turbo mode is ON by
 #        default: 4 steps / cfg 1. Toggle "Enable Lightning LoRA" off for the
 #        20-step / cfg 2.5 quality path.
-#     d) image_krea2_turbo_int8_image_style_reference.json — Krea 2 style
+#     c) image_krea2_turbo_int8_image_style_reference.json — Krea 2 style
 #        reference: generates a NEW image in the style of 1-3 reference images
 #        (not an edit of them). Needs krea2_turbo_int8 base + style LoRA (added
 #        below); encoder/VAE already present from 5b. prompt_enhance off default.
-#     New models required for (c) and (d) only:
+#     New models required for (b) and (c) only:
 #       2509 edit base (fp8, ~20 GB) + Qwen2.5-VL 7B encoder (fp8, ~7 GB)
 #       + Lightning LoRA (from lightx2v/Qwen-Image-Lightning, exact URL taken
 #       from the workflow template's node metadata).
@@ -145,6 +139,5 @@ lora|Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors|hf|lightx2v/Qwe
 diffusion|krea2_turbo_int8_convrot.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_turbo_int8_convrot.safetensors|
 lora|krea2_style_reference.safetensors|hf|Comfy-Org/Krea-2::loras/krea2_style_reference.safetensors|
 workflow|image_qwen_image_2_1_image_edit.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_image_edit.json|
-workflow|image_flux2_klein_image_edit_9b_base.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_flux2_klein_image_edit_9b_base.json|
 workflow|image_qwen_image_edit_2509.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_edit_2509.json|
 workflow|image_krea2_turbo_int8_image_style_reference.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_krea2_turbo_int8_image_style_reference.json|

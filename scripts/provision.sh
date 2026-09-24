@@ -97,7 +97,8 @@ kind_to_dir() {
 download_models() {
   local list="$CONFIG_DIR/models.list"
   [ -f "$list" ] || { log "no models.list, skipping"; return 0; }
-  export HF_HUB_ENABLE_HF_TRANSFER=1
+  # High-performance HF transfers (HF_HUB_ENABLE_HF_TRANSFER is deprecated and ignored).
+  export HF_XET_HIGH_PERFORMANCE=1
   local idx=0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac

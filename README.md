@@ -167,7 +167,7 @@ OLLAMA_MODELS=/workspace/ollama-models ollama serve > /tmp/ollama.log 2>&1 &
 cd /workspace/ComfyUI && /venv/main/bin/python main.py --listen 0.0.0.0 --port 8188 > /tmp/comfyui.log 2>&1 &
 ```
 
-Verify: `ls /workspace/comfyui-user/default/workflows/` should show 8 workflow
+Verify: `ls /workspace/comfyui-user/default/workflows/` should show 6 workflow
 JSONs. Open ComfyUI via the instance's Open button (port 8188) and hard-refresh.
 
 Advanced: you can drive `provision.sh` directly —

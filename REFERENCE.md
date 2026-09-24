@@ -123,6 +123,16 @@ Repeated HTTPS/HTTP attempts to the instance's TryCloudflare URL failed from
 the managed browser route (it may still work from a personal device). All
 diagnosis since has been terminal-based.
 
+### 2026-09-24 — Flux.2 Klein 9B stack removed (HF approval required)
+`black-forest-labs/FLUX.2-klein-9B` doesn't just need a license click-through —
+it requires **approval**: `hf download` failed with "Access denied. This
+repository requires approval." Removed the base, its Qwen3-8B encoder, the Flux2
+VAE, the InstaPic LoRA (`V3_flux_klein.safetensors`), and both Flux workflows
+(text-to-image + image edit). The exact re-add lines are commented in
+`config/models.list` if approval is ever granted.
+Also fixed the `FutureWarning` in `provision.sh`: `HF_HUB_ENABLE_HF_TRANSFER`
+is deprecated and ignored — it now sets `HF_XET_HIGH_PERFORMANCE=1` instead.
+
 ---
 
 ## 3. Model inventory (from `config/models.list`)
@@ -131,7 +141,6 @@ diagnosis since has been terminal-based.
 
 | Stack | Diffusion / base | Text encoder | VAE | LoRA |
 |---|---|---|---|---|
-| Flux.2 Klein 9B + InstaPic | `flux-2-klein-9b.safetensors` (gated: accept license on `black-forest-labs/FLUX.2-klein-9B`, needs `HF_TOKEN`) | `qwen_3_8b_fp8mixed.safetensors` | `flux2-vae.safetensors` | `V3_flux_klein.safetensors` (Civitai 2998522) |
 | Qwen-Image 2.1 + Lenovo | `qwen_image_2.1_int8_convrot.safetensors` | `qwen3vl_8b_int8_convrot.safetensors` | `qwen_image_2.1_vae_bf16.safetensors` | `lenovo_qwen21.safetensors` (Civitai 3349565) |
 | Krea 2 Raw + Lenovo | `krea2_raw_fp8_scaled.safetensors` | `qwen3vl_4b_fp8_scaled.safetensors` | `qwen_image_vae.safetensors` | `lenovo_krea2_3000.safetensors` (creator HF) |
 | Krea 2 Turbo (style-ref) | `krea2_turbo_int8_convrot.safetensors` | *(same as Raw)* | *(same as Raw)* | `krea2_style_reference.safetensors` (official, not Lenovo) |
@@ -173,7 +182,6 @@ All provisioned from `models.list` (`workflow|…|url|…` entries, plain JSONs)
 
 | File | Stack | First-load setup |
 |---|---|---|
-| `flux_2_klein_9b_text2image.json` | Flux.2 Klein 9B | Reselect UNET → `flux-2-klein-9b.safetensors`, CLIP → `qwen_3_8b_fp8mixed.safetensors` (type `flux2`); add `LoraLoaderModelOnly` with `V3_flux_klein.safetensors` @ 1.0. Defaults 4 steps / euler / cfg 1 match the creator. Trigger words: `instapic, hard flash, camera flash, smartphone photo, candid, shot on iphone, high detail skin`. |
 | `image_qwen_image_2_1_t2i.json` | Qwen-Image 2.1 + Lenovo | Insert `LoraLoaderModelOnly` (`lenovo_qwen21.safetensors` @ 0.7) after UNETLoader. KSampler: 50 steps / cfg 4 / `res_2s` / beta (RES4LYF). |
 | `image_krea2_turbo_t2i.json` | Krea 2 Raw + Lenovo | Native nodes: `lora_name` → `lenovo_krea2_3000.safetensors` @ 0.8, `unet_name` → `krea2_raw_fp8_scaled.safetensors`, ~52 steps / cfg 3.5–4. (Turbo fast path: 8 steps / cfg 1, LoRA 1.2–2.0.) |
 
@@ -182,7 +190,6 @@ All provisioned from `models.list` (`workflow|…|url|…` entries, plain JSONs)
 | File | What it does | References | New downloads | Notes |
 |---|---|---|---|---|
 | `image_qwen_image_2_1_image_edit.json` | Native Qwen-Image 2.1 edit | **Up to 10** (`image_1` = edit target, rest are refs) | **None** — uses your exact 2.1 base/encoder/VAE | Mention refs as `<img>1</img>` … in the prompt; refs may differ in size/aspect; output follows `image_1`. 25 steps / euler / cfg 1 |
-| `image_flux2_klein_image_edit_9b_base.json` | Flux.2 Klein 9B edit | 1 (+ a disabled 2nd group — select all, Ctrl-B for dual-reference) | None | Reselect UNET → `flux-2-klein-9b.safetensors`, VAE → `flux2-vae.safetensors` (template defaults are the same weights renamed). 20 steps / euler / cfg 5 |
 | `image_qwen_image_edit_2509.json` | Dedicated multi-image edit model | `image` + optional `image2`/`image3` | 2509 fp8 base (~20 GB) + Qwen2.5-VL 7B (~7 GB) + Lightning LoRA | **Turbo mode ON by default**: 4 steps / cfg 1 (the LoRA is required for this). Toggle "Enable Lightning LoRA" off for the 20-step / cfg 2.5 quality path. `ComfySwitchNode` is a core node (`comfy_extras.nodes_logic`) — no extra pack needed |
 | `image_krea2_turbo_int8_image_style_reference.json` | Style reference: generates a **new** image in the style of your refs | **Up to 3** | Turbo int8 base + `krea2_style_reference` LoRA (official, separate from Lenovo) | `prompt_enhance` off by default; LoRA strength 1, 1024×1024 |
 
@@ -225,8 +232,8 @@ rm /workspace/.vastai-tokens
 ```
 
 ### Suggested smoke-test order
-1. Flux.2 Klein text-to-image (fastest stack to validate).
-2. Qwen-Image 2.1 image edit with one target + one reference (zero new downloads).
+1. Qwen-Image 2.1 text-to-image (fast single-stack validation).
+2. Qwen-Image 2.1 image edit with one target + one reference (zero extra downloads).
 3. Then the heavier stacks (2509 edit, Krea style-ref, Wan I2V).
 
 ---
