@@ -13,8 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       openssh-server ffmpeg rclone unzip \
       libgl1 libglib2.0-0 \
  && rm -rf /var/lib/apt/lists/* \
- && python3.11 -m ensurepip --upgrade \
- && python3.11 -m pip install --upgrade pip
+ && curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py \
+ && python3.11 /tmp/get-pip.py \
+ && rm -f /tmp/get-pip.py
 
 # PyTorch (CUDA 12.8) — must come before ComfyUI's requirements
 RUN python3.11 -m pip install --no-cache-dir \
