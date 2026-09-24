@@ -135,7 +135,7 @@ download_models() {
         [ "$rpath" = "$repo" ] && rpath="$filename"
         local tmpd
         tmpd="$(mktemp -d)"
-        if huggingface-cli download "$repo" "$rpath" --local-dir "$tmpd" --quiet; then
+        if hf download "$repo" "$rpath" --local-dir "$tmpd" --quiet; then
           if mv "$tmpd/$rpath" "$dest"; then
             log "saved: $subdir/$filename"
           else
@@ -186,6 +186,11 @@ download_models() {
       else
         warn "unzip failed for $filename"
       fi
+    fi
+    # Plain (non-zip) workflows download straight to the workflows dir —
+    # leave the marker too so the next boot skips re-downloading.
+    if [ "$kind" = "workflow" ] && [ "${filename##*.}" != "zip" ] && [ -s "$dest" ]; then
+      [ -n "$marker" ] && touch "$marker"
     fi
   done < "$list"
 }

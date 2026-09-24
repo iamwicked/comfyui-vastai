@@ -10,5 +10,13 @@ https://github.com/kijai/ComfyUI-KJNodes|
 https://github.com/Fannovel16/comfyui_controlnet_aux|
 https://github.com/pythongosssss/ComfyUI-Custom-Scripts|
 https://github.com/city96/ComfyUI-GGUF|
+# Video packs required by the Wan2.2 Remix workflow (added 2026-09-24)
+https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite|
+https://github.com/princepainter/ComfyUI-PainterI2V|
+https://github.com/Fannovel16/ComfyUI-Frame-Interpolation|
+# LLM prompt expansion via local Ollama (OllamaGenerate -> CLIP Text Encode)
+https://github.com/stavsap/comfyui-ollama|
+# res_2s / res_2m samplers required by the Qwen-Image 2.1 workflow (not in core)
+https://github.com/ClownsharkBatwing/RES4LYF|
 # Add your own below, e.g.:
 # https://github.com/owner/some-node|v1.2.3
