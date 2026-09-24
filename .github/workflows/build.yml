@@ -1,0 +1,52 @@
+# Builds the golden image and pushes to GHCR on every push to main.
+# Zero secrets needed: uses the built-in GITHUB_TOKEN.
+# Image lands at: ghcr.io/<your-github-username>/comfyui-vastai:latest
+name: Build ComfyUI image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - scripts/**
+      - config/**
+      - extra_model_paths.yaml
+      - .github/workflows/build.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v5
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/comfyui-vastai
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

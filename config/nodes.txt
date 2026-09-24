@@ -1,0 +1,14 @@
+# nodes.txt — custom nodes installed by provision.sh.
+# One per line:  git_url|optional_ref
+# ref = branch or tag to pin (empty = default branch). Repos already present are
+# git-pulled on each boot, so this doubles as your update mechanism.
+# (ComfyUI-Manager is baked into the image already — don't list it here.)
+
+https://github.com/cubiq/ComfyUI_essentials|
+https://github.com/rgthree/rgthree-comfy|
+https://github.com/kijai/ComfyUI-KJNodes|
+https://github.com/Fannovel16/comfyui_controlnet_aux|
+https://github.com/pythongosssss/ComfyUI-Custom-Scripts|
+https://github.com/city96/ComfyUI-GGUF|
+# Add your own below, e.g.:
+# https://github.com/owner/some-node|v1.2.3

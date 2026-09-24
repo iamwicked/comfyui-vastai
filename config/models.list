@@ -1,0 +1,90 @@
+# models.list — everything provision.sh downloads on first boot (skipped if present).
+# Format (pipe-delimited, NOT tabs/spaces):
+#   kind|filename|source|source_id|subdir(optional)
+#
+# kind:   checkpoint | lora | vae | controlnet | upscale | embedding | clip
+#          | text_encoder | diffusion | workflow
+# source: hf      -> source_id is  repo_id::path/inside/repo   (path defaults to filename at repo root)
+#         civitai -> source_id is  the model VERSION id
+#         url     -> source_id is  the full download URL
+#
+# --- Civitai (YOUR custom models go here) ---
+# Find the VERSION id: open the model on civitai.com, pick a version, and look at
+# its download URL — it ends with /api/download/models/<VERSION_ID>. That number
+# is the source_id. Requires CIVITAI_TOKEN env var on the instance.
+# Examples (replace VERSION_ID with your own):
+# lora|my-favorite-style.safetensors|civitai|VERSION_ID|
+# lora|character-lora.safetensors|civitai|VERSION_ID|
+# checkpoint|my-merge.safetensors|civitai|VERSION_ID|
+# vae|my-vae.safetensors|civitai|VERSION_ID|
+#
+# --- HuggingFace examples (uncomment to use) ---
+# Gated repos (Flux, SDXL-Turbo...) need HF_TOKEN set and the license accepted on huggingface.co.
+# checkpoint|sd_xl_base_1.0.safetensors|hf|stabilityai/stable-diffusion-xl-base-1.0::sd_xl_base_1.0.safetensors|
+# checkpoint|flux1-dev.safetensors|hf|black-forest-labs/FLUX.1-dev::flux1-dev.safetensors|
+# vae|ae.safetensors|hf|black-forest-labs/FLUX.1-dev::ae.safetensors|
+# upscale|4x-UltraSharp.pth|url|https://huggingface.co/Kim2091/2x-AnimeSharpERSGAN-v1/resolve/main/4x-UltraSharp.pth|
+
+# --- Aadi's Civitai picks (resolved 2026-09-24) ---
+# Requires CIVITAI_TOKEN env var on the instance.
+# 1. InstaPic UltraReal — style LoRA for Flux.2 Klein 9B (158 MB)
+lora|V3_flux_klein.safetensors|civitai|2998522|
+# 2. IntoRealism ZIT V9.0 — photorealism checkpoint, Z-Image Turbo, fp8 (6.0 GB)
+checkpoint|intorealism_zitV90.safetensors|civitai|3258780|
+# 3. Moody Krea 2 Mix V7.0 BF16 — moody cinematic checkpoint, FREE version (25.6 GB)
+#    (V8.0 exists but is paid-only; V7.0 is the creator's recommended free general-use version)
+#    Filed as diffusion (not checkpoint): Krea 2 loads natively via UNETLoader from diffusion_models/
+diffusion|moodyKrea2Mix_v70BF16.safetensors|civitai|3209040|
+# 4. Uncensored Wan 2.2 Remix — i2v WORKFLOW archive (8 KB zip)
+#    provision.sh extracts the .json into ComfyUI's user dir (workflows), idempotently.
+workflow|uncensoredWan22Remix_v10.zip|civitai|2415176|
+# 5. Lenovo UltraReal — LoRA series, one version PER BASE MODEL
+#    (Qwen2.1 / Krea2 / Ideogram4 / Flux2 / Z-Image Turbo / Chroma / Wan / Flux.1).
+#    Krea 2 variant: added below as 5b, straight from the creator's HuggingFace.
+#    Qwen2.1 variant: added below as 5c (version ID 3349565, resolved 2026-09-24).
+# 6. AI Prompt Assistant Pro — Windows .exe desktop app, NOT a ComfyUI model.
+#    Runs on your own machine; can point at the Vast.ai Ollama (port 11434) as its backend.
+
+# --- Base weights the picks above NEED (verified 2026-09-24) ---
+# InstaPic LoRA -> Flux.2 Klein 9B base.
+# NOTE: black-forest-labs/FLUX.2-klein-9B is GATED — accept the license on its
+# HF page and set HF_TOKEN on the instance, or the download will fail.
+diffusion|flux-2-klein-9b.safetensors|hf|black-forest-labs/FLUX.2-klein-9B::flux-2-klein-9b.safetensors|
+text_encoder|qwen_3_8b_fp8mixed.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors|
+vae|flux2-vae.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/vae/flux2-vae.safetensors|
+# Wan 2.2 i2v workflow -> Wan2.2-I2V-A14B (high-noise + low-noise DiT), UMT5 text
+# encoder, and the Wan 2.1 VAE (shared with Wan 2.2 in ComfyUI).
+diffusion|wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|
+diffusion|wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors|
+text_encoder|umt5_xxl_fp8_e4m3fn_scaled.safetensors|hf|Comfy-Org/Wan_2.1_ComfyUI_repackaged::split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|
+vae|wan_2.1_vae.safetensors|hf|Comfy-Org/Wan_2.1_ComfyUI_repackaged::split_files/vae/wan_2.1_vae.safetensors|
+# Moody Krea 2 Mix -> Krea 2 text encoder (Qwen3-VL 4B, CLIPLoader type "krea2")
+# and the Qwen Image VAE from the official Comfy-Org Krea-2 repack.
+text_encoder|qwen3vl_4b_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::text_encoders/qwen3vl_4b_fp8_scaled.safetensors|
+vae|qwen_image_vae.safetensors|hf|Comfy-Org/Krea-2::vae/qwen_image_vae.safetensors|
+# 5b. Lenovo UltraReal KREA 2 variant — from the creator's own HuggingFace
+#     (no Civitai token needed for this one).
+#     Creator's notes: strength 0.8 on Krea 2 Raw, 1.2-2.0 on Turbo;
+#     cfg 4 on Raw for best quality, cfg 1 + Turbo LoRA for fast results.
+#     Base already covered above: Moody Krea 2 Mix + Qwen3-VL 4B encoder + Qwen Image VAE.
+lora|lenovo_krea2_3000.safetensors|hf|Danrisi/Lenovo_Krea2::lenovo_krea2_3000.safetensors|
+# 5c. Lenovo UltraReal QWEN-IMAGE-2.1 variant — RESOLVED 2026-09-24.
+#     Version "v1.0 Qwen2.1" (Civitai version ID 3349565, published 2026-09-22),
+#     baseModel "Qwen 2". The series names every variant after its base model;
+#     the creator's Lenovo_Qwen HF repo is 11 months old (Qwen v1 era), so the
+#     2.1 LoRA lives only on Civitai.
+#     Base weights verified against the creator's own example workflow embedded
+#     in the Civitai version metadata — official Comfy-Org/Qwen-Image-2.1 repo,
+#     files at the REPO ROOT (no split_files/ prefix):
+#       diffusion  qwen_image_2.1_int8_convrot.safetensors  (~7 GB, creator's pick)
+#       text_enc   qwen3vl_8b_int8_convrot.safetensors      (CLIPLoader type "qwen_image")
+#       vae        qwen_image_2.1_vae_bf16.safetensors
+#     Creator's recommended settings: cfg 3-4 (drop to 1 if the image turns to
+#     slop), beta scheduler, res_2m / res_2s / res_multistep samplers
+#     (res_2s = best quality, res_multistep = fastest, res_2m = balanced).
+#     Their example used 50 steps, cfg 4, res_2s + beta, LoRA strength 0.7.
+diffusion|qwen_image_2.1_int8_convrot.safetensors|hf|Comfy-Org/Qwen-Image-2.1::diffusion_models/qwen_image_2.1_int8_convrot.safetensors|
+text_encoder|qwen3vl_8b_int8_convrot.safetensors|hf|Comfy-Org/Qwen-Image-2.1::text_encoders/qwen3vl_8b_int8_convrot.safetensors|
+vae|qwen_image_2.1_vae_bf16.safetensors|hf|Comfy-Org/Qwen-Image-2.1::vae/qwen_image_2.1_vae_bf16.safetensors|
+#     The LoRA itself (76 MB, fp16) — Civitai version 3349565.
+lora|lenovo_qwen21.safetensors|civitai|3349565|

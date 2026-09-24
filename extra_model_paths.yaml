@@ -1,0 +1,15 @@
+# Points ComfyUI at the persistent volume so models survive
+# destroy/recreate cycles. The image's own models/ dir stays empty.
+vastai:
+  base_path: /workspace/models
+  checkpoints: checkpoints/
+  clip: clip/
+  clip_vision: clip_vision/
+  configs: configs/
+  controlnet: controlnet/
+  diffusion_models: diffusion_models/
+  embeddings: embeddings/
+  text_encoders: text_encoders/
+  loras: loras/
+  upscale_models: upscale_models/
+  vae: vae/

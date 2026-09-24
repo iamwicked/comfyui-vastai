@@ -1,0 +1,12 @@
+# ollama-models.txt — LLM models pulled into /workspace/ollama-models on first boot.
+# Skipped if already present. With an 80GB card you can comfortably run 32B-class
+# models alongside ComfyUI; 70B quants also fit if you unload during big image gens.
+# See https://ollama.com/library for the full catalog.
+
+qwen3:8b
+
+# Uncomment more as needed:
+# qwen3:32b
+# llama3.1:8b
+# deepseek-r1:14b
+# qwen3:70b-instruct-2507-q4_K_M
