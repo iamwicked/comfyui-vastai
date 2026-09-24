@@ -112,3 +112,39 @@ text_encoder|nsfw_wan_umt5-xxl_fp8_scaled.safetensors|hf|Osrivers/nsfw_wan_umt5-
 workflow|flux_2_klein_9b_text2image.json|url|https://raw.githubusercontent.com/nomadoor/comfy-with-comfyui/main/src/workflows/basic-workflows/flux-2-klein/9b/flux_2_klein_9b_text2image.json|
 workflow|image_qwen_image_2_1_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_t2i.json|
 workflow|image_krea2_turbo_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_krea2_turbo_t2i.json|
+# 11. Image-to-image / reference-image workflows (added 2026-09-24).
+#     a) image_qwen_image_2_1_image_edit.json — Qwen-Image 2.1 native edit.
+#        Up to 10 reference images: image_1 is the edit TARGET, the rest are
+#        references (mention as <img>1</img>, <img>2</img> ... in the prompt).
+#        Uses the exact 2.1 base/encoder/VAE already downloaded above —
+#        NO new models needed. 25 steps / euler / cfg 1.
+#     b) image_flux2_klein_image_edit_9b_base.json — Flux.2 Klein 9B edit.
+#        1 reference image (+ a disabled 2nd group: select all, Ctrl-B to enable
+#        dual-reference). After loading, reselect UNET -> flux-2-klein-9b.safetensors
+#        and VAE -> flux2-vae.safetensors (the template's default filenames are
+#        the same weights under different names). 20 steps / euler / cfg 5.
+#        NO new downloads.
+#     c) image_qwen_image_edit_2509.json — dedicated multi-image edit model
+#        (image + optional image2/image3). Needs the 2509 edit base + Qwen2.5-VL
+#        7B encoder + Lightning 4-step LoRA (added below). Turbo mode is ON by
+#        default: 4 steps / cfg 1. Toggle "Enable Lightning LoRA" off for the
+#        20-step / cfg 2.5 quality path.
+#     d) image_krea2_turbo_int8_image_style_reference.json — Krea 2 style
+#        reference: generates a NEW image in the style of 1-3 reference images
+#        (not an edit of them). Needs krea2_turbo_int8 base + style LoRA (added
+#        below); encoder/VAE already present from 5b. prompt_enhance off default.
+#     New models required for (c) and (d) only:
+#       2509 edit base (fp8, ~20 GB) + Qwen2.5-VL 7B encoder (fp8, ~7 GB)
+#       + Lightning LoRA (from lightx2v/Qwen-Image-Lightning, exact URL taken
+#       from the workflow template's node metadata).
+diffusion|qwen_image_edit_2509_fp8_e4m3fn.safetensors|hf|Comfy-Org/Qwen-Image-Edit_ComfyUI::split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors|
+text_encoder|qwen_2.5_vl_7b_fp8_scaled.safetensors|hf|Comfy-Org/Qwen-Image_ComfyUI::split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors|
+lora|Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors|hf|lightx2v/Qwen-Image-Lightning::Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors|
+#       Krea 2 Turbo int8 base + official style-reference LoRA (both from the
+#       official Comfy-Org/Krea-2 repack; exact URLs from the template's nodes).
+diffusion|krea2_turbo_int8_convrot.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_turbo_int8_convrot.safetensors|
+lora|krea2_style_reference.safetensors|hf|Comfy-Org/Krea-2::loras/krea2_style_reference.safetensors|
+workflow|image_qwen_image_2_1_image_edit.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_image_edit.json|
+workflow|image_flux2_klein_image_edit_9b_base.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_flux2_klein_image_edit_9b_base.json|
+workflow|image_qwen_image_edit_2509.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_edit_2509.json|
+workflow|image_krea2_turbo_int8_image_style_reference.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_krea2_turbo_int8_image_style_reference.json|
