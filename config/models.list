@@ -27,8 +27,11 @@
 
 # --- Aadi's Civitai picks (resolved 2026-09-24) ---
 # Requires CIVITAI_TOKEN env var on the instance.
-# 1. InstaPic UltraReal — REMOVED 2026-09-24 (with the Flux.2 Klein 9B stack, below:
-#    black-forest-labs/FLUX.2-klein-9B requires HF *approval* — access denied).
+# 1. InstaPic UltraReal — style LoRA for Flux.2 Klein 9B (158 MB)
+#    NOTE 2026-09-24: the Klein 9B base itself is approval-gated (see base-weights
+#    section) and NOT downloaded. LoRA kept so the stack works if you source the
+#    base file manually.
+lora|V3_flux_klein.safetensors|civitai|2998522|
 # 2. IntoRealism ZIT V9.0 — photorealism checkpoint, Z-Image Turbo, fp8 (6.0 GB)
 checkpoint|intorealism_zitV90.safetensors|civitai|3258780|
 # 3. Uncensored Wan 2.2 Remix — i2v WORKFLOW archive (8 KB zip)
@@ -42,18 +45,18 @@ workflow|uncensoredWan22Remix_v10.zip|civitai|2415176|
 #    Runs on your own machine; can point at the Vast.ai Ollama (port 11434) as its backend.
 
 # --- Base weights the picks above NEED (verified 2026-09-24) ---
-# Flux.2 Klein 9B stack — REMOVED 2026-09-24.
-# black-forest-labs/FLUX.2-klein-9B requires *APPROVAL* (not just a license
-# click-through): hf download fails with "Access denied. This repository
-# requires approval." Until approval is granted, the base, its Qwen3-8B
-# encoder, the Flux2 VAE, the InstaPic LoRA, and both Flux workflows stay out.
-# To restore, un-comment:
+# Flux.2 Klein 9B base — REMOVED 2026-09-24: black-forest-labs/FLUX.2-klein-9B
+# requires *APPROVAL* (not just a license click-through): hf download fails with
+# "Access denied. This repository requires approval."
+# The Qwen3-8B encoder + Flux2 VAE below are KEPT (ungated) so the stack works if
+# you source flux-2-klein-9b.safetensors manually — drop it into
+# models/diffusion_models/. Both Flux workflows stay out until the base exists.
+# To restore the base + workflows, un-comment:
 # diffusion|flux-2-klein-9b.safetensors|hf|black-forest-labs/FLUX.2-klein-9B::flux-2-klein-9b.safetensors|
-# text_encoder|qwen_3_8b_fp8mixed.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors|
-# vae|flux2-vae.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/vae/flux2-vae.safetensors|
-# lora|V3_flux_klein.safetensors|civitai|2998522|
 # workflow|flux_2_klein_9b_text2image.json|url|https://raw.githubusercontent.com/nomadoor/comfy-with-comfyui/main/src/workflows/basic-workflows/flux-2-klein/9b/flux_2_klein_9b_text2image.json|
 # workflow|image_flux2_klein_image_edit_9b_base.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_flux2_klein_image_edit_9b_base.json|
+text_encoder|qwen_3_8b_fp8mixed.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors|
+vae|flux2-vae.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/vae/flux2-vae.safetensors|
 # Wan 2.2 i2v workflow -> Wan2.2-I2V-A14B (high-noise + low-noise DiT), UMT5 text
 # encoder, and the Wan 2.1 VAE (shared with Wan 2.2 in ComfyUI).
 diffusion|wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|

@@ -123,13 +123,14 @@ Repeated HTTPS/HTTP attempts to the instance's TryCloudflare URL failed from
 the managed browser route (it may still work from a personal device). All
 diagnosis since has been terminal-based.
 
-### 2026-09-24 — Flux.2 Klein 9B stack removed (HF approval required)
+### 2026-09-24 — Flux.2 Klein 9B base removed (HF approval required)
 `black-forest-labs/FLUX.2-klein-9B` doesn't just need a license click-through —
 it requires **approval**: `hf download` failed with "Access denied. This
-repository requires approval." Removed the base, its Qwen3-8B encoder, the Flux2
-VAE, the InstaPic LoRA (`V3_flux_klein.safetensors`), and both Flux workflows
-(text-to-image + image edit). The exact re-add lines are commented in
-`config/models.list` if approval is ever granted.
+repository requires approval." Removed the base model and both Flux workflows
+(text-to-image + image edit). Kept the ungated Qwen3-8B encoder, Flux2 VAE, and
+InstaPic LoRA, so the stack works if the base is sourced manually — drop
+`flux-2-klein-9b.safetensors` into `models/diffusion_models/`. Re-add lines are
+commented in `config/models.list`.
 Also fixed the `FutureWarning` in `provision.sh`: `HF_HUB_ENABLE_HF_TRANSFER`
 is deprecated and ignored — it now sets `HF_XET_HIGH_PERFORMANCE=1` instead.
 
@@ -141,6 +142,7 @@ is deprecated and ignored — it now sets `HF_XET_HIGH_PERFORMANCE=1` instead.
 
 | Stack | Diffusion / base | Text encoder | VAE | LoRA |
 |---|---|---|---|---|
+| Flux.2 Klein 9B + InstaPic | `flux-2-klein-9b.safetensors` — **not downloaded** (`black-forest-labs/FLUX.2-klein-9B` needs HF approval) | `qwen_3_8b_fp8mixed.safetensors` | `flux2-vae.safetensors` | `V3_flux_klein.safetensors` (Civitai 2998522) |
 | Qwen-Image 2.1 + Lenovo | `qwen_image_2.1_int8_convrot.safetensors` | `qwen3vl_8b_int8_convrot.safetensors` | `qwen_image_2.1_vae_bf16.safetensors` | `lenovo_qwen21.safetensors` (Civitai 3349565) |
 | Krea 2 Raw + Lenovo | `krea2_raw_fp8_scaled.safetensors` | `qwen3vl_4b_fp8_scaled.safetensors` | `qwen_image_vae.safetensors` | `lenovo_krea2_3000.safetensors` (creator HF) |
 | Krea 2 Turbo (style-ref) | `krea2_turbo_int8_convrot.safetensors` | *(same as Raw)* | *(same as Raw)* | `krea2_style_reference.safetensors` (official, not Lenovo) |
