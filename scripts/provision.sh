@@ -98,8 +98,17 @@ download_models() {
   local list="$CONFIG_DIR/models.list"
   [ -f "$list" ] || { log "no models.list, skipping"; return 0; }
   export HF_HUB_ENABLE_HF_TRANSFER=1
+  local idx=0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
+    # Shard the downloads: data line $idx belongs to shard ($idx % $SHARD_TOTAL).
+    # Run one shard per terminal, e.g.:
+    #   PHASES=models SHARD_INDEX=0 SHARD_TOTAL=4 bash scripts/provision.sh
+    # Every model is downloaded by exactly one shard; nodes/ollama are excluded
+    # via PHASES and run once separately.
+    local shard=$((idx % SHARD_TOTAL))
+    idx=$((idx + 1))
+    if [ "$shard" -ne "$SHARD_INDEX" ]; then continue; fi
     # format: kind|filename|source|source_id|subdir(optional)
     local kind="${line%%|*}";          local rest="${line#*|}"
     local filename="${rest%%|*}";      rest="${rest#*|}"
@@ -221,7 +230,25 @@ pull_ollama() {
   sleep 1
 }
 
-install_nodes
-download_models
-pull_ollama
+# ---- 5. Phase dispatch ----
+# PHASES: comma-separated subset of nodes,models,ollama (default: all three).
+# SHARD_INDEX / SHARD_TOTAL: split *model downloads* across N terminals, e.g.
+#   terminal 1: PHASES=models SHARD_INDEX=0 SHARD_TOTAL=4 bash scripts/provision.sh
+#   terminal 2: PHASES=models SHARD_INDEX=1 SHARD_TOTAL=4 bash scripts/provision.sh
+#   ...then once: PHASES=nodes,ollama bash scripts/provision.sh
+# Nodes and Ollama must not run concurrently (git/ollama-serve races), so they
+# are excluded from the download shards and run once at the end.
+PHASES="${PHASES:-nodes,models,ollama}"
+case "$SHARD_TOTAL" in ''|*[!0-9]*) SHARD_TOTAL=1 ;; esac
+case "$SHARD_INDEX" in ''|*[!0-9]*) SHARD_INDEX=0 ;; esac
+if [ "$SHARD_TOTAL" -lt 1 ]; then SHARD_TOTAL=1; fi
+if [ "$SHARD_INDEX" -ge "$SHARD_TOTAL" ]; then
+  warn "SHARD_INDEX ($SHARD_INDEX) >= SHARD_TOTAL ($SHARD_TOTAL): this shard downloads nothing"
+fi
+
+run_phase() { case ",${PHASES}," in *",${1},"*) return 0 ;; *) return 1 ;; esac; }
+
+if run_phase nodes; then install_nodes; fi
+if run_phase models; then download_models; fi
+if run_phase ollama; then pull_ollama; fi
 log "provisioning complete."
