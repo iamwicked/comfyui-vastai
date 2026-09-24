@@ -3,18 +3,21 @@
 # (ComfyUI at /workspace/ComfyUI, python at /venv/main). The golden-image flow
 # needs none of this; use this script when you're on the stock template instead.
 #
+# Downloads are organized BY WORKFLOW: one command installs everything a single
+# workflow needs (its models + its custom nodes + its workflow JSON).
+#
+#   bash scripts/stock-setup.sh init       # clone repo, prereqs, user-dir link
+#   bash scripts/stock-setup.sh qwen21     # install ONE workflow (any id below)
+#   bash scripts/stock-setup.sh all        # init + every workflow + finish
+#   bash scripts/stock-setup.sh finish     # global nodes + ollama (run once)
+#   bash scripts/stock-setup.sh list       # show workflow ids
+#
+# To saturate bandwidth, run several workflow installs in parallel terminals
+# (e.g. one terminal per workflow) — each is idempotent, so overlaps are safe.
+# Then run `finish` once in any terminal.
+#
 # Export HF_TOKEN and CIVITAI_TOKEN in EVERY terminal before running
 # (gated HF repos need the first, all Civitai downloads need the second).
-#
-# Single terminal (simple; the ~150GB model pull runs serially):
-#   git clone https://github.com/iamwicked/comfyui-vastai.git /workspace/comfyui-vastai
-#   cd /workspace/comfyui-vastai
-#   bash scripts/stock-setup.sh
-#
-# N terminals in parallel (much faster first boot — downloads are the bottleneck):
-#   terminal 1:      bash scripts/stock-setup.sh init
-#   terminals 1..N:  bash scripts/stock-setup.sh dl <i> <N>   # i = 1..N
-#   terminal 1:      bash scripts/stock-setup.sh finish       # after all shards done
 set -euo pipefail
 
 REPO_URL="https://github.com/iamwicked/comfyui-vastai.git"
@@ -22,6 +25,10 @@ REPO_DIR="${REPO_DIR:-/workspace/comfyui-vastai}"
 COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
 WORKSPACE="${WORKSPACE:-/workspace}"
 CONFIG_DIR="$REPO_DIR/config"
+
+# Every installable workflow (matches provision.sh --list-workflows, minus the
+# disabled `flux` stack whose base needs HF approval).
+ALL_WORKFLOWS="qwen21 qwen21-edit krea2 edit-2509 krea-style wan-i2v global"
 
 log() { echo "[stock-setup] $*"; }
 
@@ -34,7 +41,7 @@ phase_init() {
     git -C "$REPO_DIR" pull --ff-only -q || true
   fi
   # Prerequisites the stock template may lack (install only what's missing).
-  command -v hf >/dev/null || /venv/main/bin/python -m pip install -q "huggingface_hub[hf_transfer]"
+  command -v hf >/dev/null || /venv/main/bin/python -m pip install -q "huggingface_hub[hf_xet]"
   command -v ollama >/dev/null || curl -fsSL https://ollama.com/install.sh | sh
   command -v unzip >/dev/null || (apt-get update -qq && apt-get install -y -qq unzip)
   command -v wget >/dev/null || (apt-get update -qq && apt-get install -y -qq wget)
@@ -56,17 +63,15 @@ phase_init() {
   fi
 }
 
-phase_dl() {
-  local i="${1:?usage: stock-setup.sh dl <i> <N>}"
-  local n="${2:?usage: stock-setup.sh dl <i> <N>}"
-  log "downloading models: shard $i of $n"
-  PHASES=models SHARD_INDEX=$((i - 1)) SHARD_TOTAL="$n" \
-    CONFIG_DIR="$CONFIG_DIR" COMFYUI_DIR="$COMFYUI_DIR" WORKSPACE="$WORKSPACE" \
-    bash "$REPO_DIR/scripts/provision.sh"
+phase_workflow() {
+  local id="$1"
+  log "installing workflow: $id"
+  REPO_DIR="$REPO_DIR" COMFYUI_DIR="$COMFYUI_DIR" WORKSPACE="$WORKSPACE" \
+    bash "$REPO_DIR/scripts/install-workflow.sh" "$id"
 }
 
 phase_finish() {
-  log "installing nodes + pulling ollama models (runs once, not per shard)"
+  log "installing global nodes + pulling ollama models (runs once)"
   PHASES=nodes,ollama \
     CONFIG_DIR="$CONFIG_DIR" COMFYUI_DIR="$COMFYUI_DIR" WORKSPACE="$WORKSPACE" \
     bash "$REPO_DIR/scripts/provision.sh"
@@ -79,9 +84,13 @@ phase_finish() {
 cmd="${1:-all}"
 case "$cmd" in
   init)   phase_init ;;
-  dl)     phase_dl "${2:-}" "${3:-}" ;;
   finish) phase_finish ;;
-  all)    phase_init; phase_dl 1 1; phase_finish ;;
-  *) echo "usage: $0 [init | dl <i> <N> | finish]  (default: all)" >&2; exit 1 ;;
+  list)   bash "$REPO_DIR/scripts/install-workflow.sh" --list ;;
+  all)
+    phase_init
+    for id in $ALL_WORKFLOWS; do phase_workflow "$id"; done
+    phase_finish
+    ;;
+  *)      phase_workflow "$cmd" ;;   # any workflow id -> one-command install
 esac
 log "done."

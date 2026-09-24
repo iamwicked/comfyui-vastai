@@ -14,14 +14,16 @@ scripts/
   entrypoint.sh             Boot: SSH setup → persistent layout → provision → start
   provision.sh              Idempotent setup: updates nodes, downloads missing
                             models (HF/Civitai/URL), pulls Ollama models.
-                            PHASES= / SHARD_INDEX= / SHARD_TOTAL= split work
-                            across terminals (see stock-template section below)
+                            PHASES= limits phases; WORKFLOW=<id> installs one
+                            workflow's models+nodes (see stock-template section)
+  install-workflow.sh       One command per workflow: its models + its nodes +
+                            its workflow JSON (idempotent, parallel-safe)
   start.sh                  Launches Ollama (port 11434) + ComfyUI (port 8188)
   save-progress.sh          End-of-session: git-push workflows, rclone-sync outputs
   stock-setup.sh            Fresh STOCK-template instance setup (skip with the
                             golden image): prereqs, python3.11 shim, user/ symlink,
-                            then provision with stock paths. init/dl/finish phases
-                            for parallel downloads across N terminals
+                            then per-workflow installs with stock paths.
+                            init / <workflow-id> / all / finish / list
 config/
   models.list               Your models: kind|filename|source|source_id|subdir
                             ← FILL IN your Civitai version IDs here
@@ -130,34 +132,31 @@ Export your tokens in **every** terminal first (gated HF repos need
 export HF_TOKEN=hf_xxx CIVITAI_TOKEN=xxx
 ```
 
-**Single terminal** (simple; the ~150GB model pull runs serially):
+Downloads are organized **by workflow** — one command installs everything a
+single workflow needs (its models, its custom nodes, its workflow JSON):
 
 ```bash
 git clone https://github.com/iamwicked/comfyui-vastai.git /workspace/comfyui-vastai
 cd /workspace/comfyui-vastai
-bash scripts/stock-setup.sh
+bash scripts/stock-setup.sh init          # clone/pull, prereqs, user-dir link
+
+bash scripts/stock-setup.sh list          # show workflow ids
+bash scripts/stock-setup.sh qwen21        # install ONE workflow...
+bash scripts/stock-setup.sh wan-i2v       # ...or another one, in parallel
 ```
 
-**Parallel downloads across N terminals** (much faster first boot — the model
-pull is the bottleneck, and shards download concurrently). Data line *i* of
-`config/models.list` always goes to shard *i % N*, so every model downloads
-exactly once; nodes and Ollama run once at the end, not per shard.
+Run several workflow installs in **parallel terminals** (one id per terminal)
+to saturate bandwidth — each is idempotent, so overlaps are safe. Then, once
+in any terminal:
 
-Terminal 1:
 ```bash
-cd /workspace/comfyui-vastai
-bash scripts/stock-setup.sh init
+bash scripts/stock-setup.sh finish        # global nodes + ollama models
 ```
 
-Terminals 1..N — one shard per terminal (`i` = 1..N):
-```bash
-cd /workspace/comfyui-vastai
-bash scripts/stock-setup.sh dl <i> <N>   # e.g. dl 1 4 / dl 2 4 / dl 3 4 / dl 4 4
-```
+Or do everything serially in one terminal:
 
-Terminal 1, after all shards finish:
 ```bash
-bash scripts/stock-setup.sh finish
+bash scripts/stock-setup.sh               # = init + every workflow + finish
 ```
 
 Then start everything (nothing on the stock template autostarts it):
@@ -172,8 +171,9 @@ JSONs. Open ComfyUI via the instance's Open button (port 8188) and hard-refresh.
 
 Advanced: you can drive `provision.sh` directly —
 `PHASES` takes a comma-separated subset of `nodes,models,ollama`, and
-`SHARD_INDEX`/`SHARD_TOTAL` shard just the model downloads, e.g.
-`PHASES=models SHARD_INDEX=0 SHARD_TOTAL=4 bash scripts/provision.sh`.
+`WORKFLOW=<id>` (or `--workflow <id>`) limits the run to one workflow, e.g.
+`WORKFLOW=wan-i2v PHASES=models bash scripts/provision.sh`.
+`bash scripts/provision.sh --list-workflows` shows the catalog.
 
 ## Troubleshooting
 

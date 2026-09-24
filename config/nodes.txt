@@ -1,7 +1,10 @@
 # nodes.txt — custom nodes installed by provision.sh.
-# One per line:  git_url|optional_ref
+# One per line:  git_url|optional_ref|wf:workflow-ids(optional)
 # ref = branch or tag to pin (empty = default branch). Repos already present are
 # git-pulled on each boot, so this doubles as your update mechanism.
+# wf: = only installed for these workflows (same ids as models.list).
+#     Entries with no wf: tag are global — installed by full runs, skipped by
+#     per-workflow installs.
 # (ComfyUI-Manager is baked into the image already — don't list it here.)
 
 https://github.com/cubiq/ComfyUI_essentials|
@@ -11,12 +14,12 @@ https://github.com/Fannovel16/comfyui_controlnet_aux|
 https://github.com/pythongosssss/ComfyUI-Custom-Scripts|
 https://github.com/city96/ComfyUI-GGUF|
 # Video packs required by the Wan2.2 Remix workflow (added 2026-09-24)
-https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite|
-https://github.com/princepainter/ComfyUI-PainterI2V|
-https://github.com/Fannovel16/ComfyUI-Frame-Interpolation|
+https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite||wf:wan-i2v
+https://github.com/princepainter/ComfyUI-PainterI2V||wf:wan-i2v
+https://github.com/Fannovel16/ComfyUI-Frame-Interpolation||wf:wan-i2v
 # LLM prompt expansion via local Ollama (OllamaGenerate -> CLIP Text Encode)
 https://github.com/stavsap/comfyui-ollama|
 # res_2s / res_2m samplers required by the Qwen-Image 2.1 workflow (not in core)
-https://github.com/ClownsharkBatwing/RES4LYF|
+https://github.com/ClownsharkBatwing/RES4LYF||wf:qwen21,qwen21-edit
 # Add your own below, e.g.:
 # https://github.com/owner/some-node|v1.2.3

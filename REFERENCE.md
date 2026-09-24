@@ -134,6 +134,17 @@ commented in `config/models.list`.
 Also fixed the `FutureWarning` in `provision.sh`: `HF_HUB_ENABLE_HF_TRANSFER`
 is deprecated and ignored — it now sets `HF_XET_HIGH_PERFORMANCE=1` instead.
 
+### 2026-09-24 — Downloads reorganized by workflow (replaces terminal sharding)
+`models.list` / `nodes.txt` lines now carry `wf:<id>` tags naming the
+workflow(s) that need each file; `provision.sh` accepts `WORKFLOW=<id>` /
+`--workflow <id>` (plus `--list-workflows`), and `scripts/install-workflow.sh`
+is the one-command installer (models + tagged nodes + workflow JSON,
+idempotent and parallel-safe). `SHARD_INDEX`/`SHARD_TOTAL` sharding and
+`stock-setup.sh dl` are gone — parallelize by giving each terminal a different
+workflow id instead. Untagged lines form the `global` pool (fetched by full
+runs and `WORKFLOW=global`). `stock-setup.sh` is now
+`init | <id> | all | finish | list`.
+
 ---
 
 ## 3. Model inventory (from `config/models.list`)
@@ -199,6 +210,32 @@ Also present: the Wan2.2-Remix painter I2V workflow
 (`Wan2.2-Remix painter I2V-Ai Verse (1).json`, from the Civitai zip
 `uncensoredWan22Remix_v10.zip`) and `sdxlturbo_example.json`.
 
+### Per-workflow installs (added 2026-09-24)
+
+Every `models.list` / `nodes.txt` line carries a `wf:<id>` tag naming the
+workflow(s) that need it. One command installs everything a workflow needs
+(its models + its workflow JSON + its tagged custom nodes):
+
+```bash
+bash scripts/install-workflow.sh qwen21      # or: bash scripts/stock-setup.sh qwen21
+bash scripts/provision.sh --list-workflows   # show the catalog
+```
+
+| Install id | Workflow file | Installs (models + nodes) |
+|---|---|---|
+| `qwen21` | `image_qwen_image_2_1_t2i.json` | 2.1 int8 base + Qwen3-VL 8B enc + 2.1 VAE + `lenovo_qwen21` LoRA + RES4LYF nodes |
+| `qwen21-edit` | `image_qwen_image_2_1_image_edit.json` | Same 2.1 stack as above (shared) + RES4LYF |
+| `krea2` | `image_krea2_turbo_t2i.json` | Krea2 Raw base + Qwen3-VL 4B enc + Qwen-Image VAE + `lenovo_krea2_3000` LoRA |
+| `edit-2509` | `image_qwen_image_edit_2509.json` | 2509 fp8 edit base + Qwen2.5-VL 7B enc + Lightning 4-step LoRA (+ shared Qwen-Image VAE) |
+| `krea-style` | `image_krea2_turbo_int8_image_style_reference.json` | Krea2 Turbo int8 base + `krea2_style_reference` LoRA (+ shared 4B enc + VAE) |
+| `wan-i2v` | `uncensoredWan22Remix_v10.zip` (extracted) | Wan2.2 high/low DiTs + UMT5 + Wan 2.1 VAE + NSFW Remix DiTs + NSFW UMT5 + 4x upscaler + VideoHelperSuite/PainterI2V/Frame-Interpolation |
+| `global` | — | Untagged extras: `intorealism_zitV90` checkpoint + global nodes |
+| `flux` | (disabled) | Encoder + VAE + InstaPic LoRA only — base needs HF approval |
+
+Parallelize across terminals by giving each a different id; every install is
+idempotent. `stock-setup.sh all` runs `init` + all ids + `finish` (global nodes
++ Ollama) serially.
+
 ---
 
 ## 5. Instance runbook
@@ -206,6 +243,13 @@ Also present: the Wan2.2-Remix painter I2V workflow
 ### Provision / update everything (idempotent — skips what's present)
 ```bash
 cd /workspace/comfyui-vastai && bash scripts/provision.sh
+```
+
+### Install one workflow (idempotent — its models + nodes + workflow JSON)
+```bash
+cd /workspace/comfyui-vastai && bash scripts/install-workflow.sh qwen21
+# or on a fresh stock instance: bash scripts/stock-setup.sh qwen21
+# list ids: bash scripts/provision.sh --list-workflows
 ```
 
 ### If workflows don't show in the UI (symlink bug, §2)

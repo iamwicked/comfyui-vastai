@@ -3,6 +3,14 @@
 # Safe to re-run any time: it only fetches what's missing.
 # Reads lists from $CONFIG_DIR (baked into the image), optionally refreshed
 # at boot from URLs so you can edit your model/node lists without rebuilding.
+#
+# Per-workflow installs: set WORKFLOW=<id> (or pass --workflow <id>) to fetch
+# only the models + workflow JSON (+ tagged custom nodes) that ONE workflow
+# needs. One command per workflow:
+#   WORKFLOW=qwen21 bash scripts/provision.sh
+#   bash scripts/provision.sh --workflow wan-i2v
+#   bash scripts/provision.sh --list-workflows   # show the catalog
+# With WORKFLOW set, PHASES defaults to "nodes,models" (Ollama stays global).
 set -euo pipefail
 
 CONFIG_DIR="${CONFIG_DIR:-/opt/comfyui-config}"
@@ -48,8 +56,14 @@ install_nodes() {
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
     local url="${line%%|*}"
-    local ref="${line#*|}"
-    [ "$ref" = "$line" ] && ref=""   # no '|' present -> no ref
+    local tail="${line#*|}"
+    local ref="" wftag=""
+    if [ "$tail" != "$line" ]; then
+      ref="${tail%%|*}"
+      wftag="${tail#*|}"
+      [ "$wftag" = "$tail" ] && wftag=""   # no 3rd field -> untagged (global)
+    fi
+    wf_skip "$wftag" && continue
     local name
     name="$(basename "$url" .git)"
     local dest="$COMFYUI_DIR/custom_nodes/$name"
@@ -99,23 +113,19 @@ download_models() {
   [ -f "$list" ] || { log "no models.list, skipping"; return 0; }
   # High-performance HF transfers (HF_HUB_ENABLE_HF_TRANSFER is deprecated and ignored).
   export HF_XET_HIGH_PERFORMANCE=1
-  local idx=0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
-    # Shard the downloads: data line $idx belongs to shard ($idx % $SHARD_TOTAL).
-    # Run one shard per terminal, e.g.:
-    #   PHASES=models SHARD_INDEX=0 SHARD_TOTAL=4 bash scripts/provision.sh
-    # Every model is downloaded by exactly one shard; nodes/ollama are excluded
-    # via PHASES and run once separately.
-    local shard=$((idx % SHARD_TOTAL))
-    idx=$((idx + 1))
-    if [ "$shard" -ne "$SHARD_INDEX" ]; then continue; fi
-    # format: kind|filename|source|source_id|subdir(optional)
+    # format: kind|filename|source|source_id|subdir(optional)|wf:ids(optional)
     local kind="${line%%|*}";          local rest="${line#*|}"
     local filename="${rest%%|*}";      rest="${rest#*|}"
     local source="${rest%%|*}";        rest="${rest#*|}"
-    local source_id="${rest%%|*}";     local subdir="${rest#*|}"
-    [ "$subdir" = "$source_id" ] && subdir=""
+    local source_id="${rest%%|*}";     rest="${rest#*|}"
+    local subdir="${rest%%|*}";        rest="${rest#*|}"
+    local wftag="$rest"
+    [ "$wftag" = "$subdir" ] && wftag=""   # no 6th field -> untagged (global)
+    # Per-workflow mode: keep only lines tagged for $WORKFLOW
+    # (or only untagged lines when WORKFLOW=global).
+    wf_skip "$wftag" && continue
     local destdir dest marker=""
     if [ "$kind" = "workflow" ]; then
       # Workflows live in ComfyUI's user dir (entrypoint.sh symlinks it to the volume),
@@ -231,21 +241,57 @@ pull_ollama() {
   sleep 1
 }
 
-# ---- 5. Phase dispatch ----
-# PHASES: comma-separated subset of nodes,models,ollama (default: all three).
-# SHARD_INDEX / SHARD_TOTAL: split *model downloads* across N terminals, e.g.
-#   terminal 1: PHASES=models SHARD_INDEX=0 SHARD_TOTAL=4 bash scripts/provision.sh
-#   terminal 2: PHASES=models SHARD_INDEX=1 SHARD_TOTAL=4 bash scripts/provision.sh
-#   ...then once: PHASES=nodes,ollama bash scripts/provision.sh
-# Nodes and Ollama must not run concurrently (git/ollama-serve races), so they
-# are excluded from the download shards and run once at the end.
-PHASES="${PHASES:-nodes,models,ollama}"
-case "$SHARD_TOTAL" in ''|*[!0-9]*) SHARD_TOTAL=1 ;; esac
-case "$SHARD_INDEX" in ''|*[!0-9]*) SHARD_INDEX=0 ;; esac
-if [ "$SHARD_TOTAL" -lt 1 ]; then SHARD_TOTAL=1; fi
-if [ "$SHARD_INDEX" -ge "$SHARD_TOTAL" ]; then
-  warn "SHARD_INDEX ($SHARD_INDEX) >= SHARD_TOTAL ($SHARD_TOTAL): this shard downloads nothing"
+# ---- 5. Workflow selection ----
+# WORKFLOW=<id> (or --workflow <id>): install only what one workflow needs —
+# its models, its workflow JSON, and its tagged custom nodes. Untagged
+# (global) models/nodes are skipped; WORKFLOW=global installs just those.
+# Parallelize across terminals by giving each terminal a different workflow id.
+list_workflows() {
+  cat <<'EOF'
+qwen21       Qwen-Image 2.1 text-to-image (+ Lenovo UltraReal LoRA)
+qwen21-edit  Qwen-Image 2.1 image edit — up to 10 refs, no extra models
+krea2        Krea 2 text-to-image (+ Lenovo UltraReal LoRA)
+edit-2509    Qwen-Image-Edit 2509 multi-image edit (Lightning 4-step turbo)
+krea-style   Krea 2 Turbo style reference (1-3 style images)
+wan-i2v      Wan2.2 Remix painter image-to-video (uncensored)
+global       Shared extras not tied to one workflow (Z-Image Turbo ckpt)
+flux         Flux.2 Klein 9B support files (BASE not downloaded — needs HF approval)
+EOF
+}
+
+workflow_match() { # $1: "wf:a,b" (or ""), $2: wanted id -> 0 on match
+  case ",${1#wf:}," in *",$2,"*) return 0 ;; *) return 1 ;; esac
+}
+
+wf_skip() { # $1: wftag field -> 0 when this line should be SKIPPED
+  [ -z "${WORKFLOW:-}" ] && return 1               # no filter -> keep line
+  if [ "$WORKFLOW" = "global" ]; then
+    [ -n "$1" ] && return 0 || return 1             # global: skip tagged lines
+  fi
+  workflow_match "$1" "$WORKFLOW" && return 1 || return 0
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --workflow) WORKFLOW="${2:?--workflow needs a workflow id}"; shift 2 ;;
+    --list-workflows) list_workflows; exit 0 ;;
+    *) warn "ignoring unknown argument: $1"; shift ;;
+  esac
+done
+
+if [ -n "${WORKFLOW:-}" ]; then
+  list_workflows | awk '{print $1}' | grep -qx "$WORKFLOW" \
+    || { warn "unknown workflow '$WORKFLOW' — available workflows:"; list_workflows; exit 1; }
+  # Per-workflow runs default to just nodes+models; set PHASES explicitly to
+  # add ollama (it always pulls the full LLM list — not per-workflow).
+  if [ -z "${PHASES+x}" ]; then PHASES="nodes,models"; fi
+  log "workflow mode: $WORKFLOW (PHASES=$PHASES)"
 fi
+
+# ---- 6. Phase dispatch ----
+# PHASES: comma-separated subset of nodes,models,ollama (default: all three,
+# or nodes,models when WORKFLOW is set).
+PHASES="${PHASES:-nodes,models,ollama}"
 
 run_phase() { case ",${PHASES}," in *",${1},"*) return 0 ;; *) return 1 ;; esac; }
 
