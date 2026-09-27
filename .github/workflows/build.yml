@@ -23,6 +23,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The CUDA devel base plus torch needs far more than the runner's default
+      # free space; drop preinstalled toolchains this build never uses.
+      - name: Free runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
@@ -49,4 +58,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # The image is larger than the Actions cache quota; a failed cache export
+          # must not fail an otherwise good build.
+          cache-to: type=gha,mode=max,ignore-error=true
