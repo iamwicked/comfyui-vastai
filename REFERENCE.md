@@ -3,7 +3,8 @@
 Aadi's reproducible ComfyUI + Ollama workstation on Vast.ai. Idempotent scripts turn a
 **stock Vast.ai ComfyUI template** instance into the full setup: one command installs
 everything one workflow needs (models, LoRAs, custom nodes, Ollama models, workflow
-JSON). Built for one 80 GB GPU (A100 / H100 class).
+JSON), and the template can run the whole thing by itself on first boot. Built for one
+80 GB GPU (A100 / H100 class).
 
 Repo: `https://github.com/iamwicked/comfyui-vastai` · Changes per version: `CHANGELOG.md`
 
@@ -17,30 +18,66 @@ Repo: `https://github.com/iamwicked/comfyui-vastai` · Changes per version: `CHA
 | `config/ollama-models.txt` | Ollama LLMs with `wf:` tags |
 | `config/workflows/` | Bundled workflow JSONs (login-gated ones are fetched on-instance instead) |
 | `config/patches/` | Small, idempotent edits applied to a workflow JSON after download |
-| `scripts/stock-setup.sh` | Fresh-instance entrypoint: `init`, `<id>`, `finish`, `all`, `status`, `restart`, `list` |
+| `scripts/vast-provision.sh` | Hands-off first boot: Vast's `PROVISIONING_SCRIPT` target (§2A) |
+| `scripts/stock-setup.sh` | Instance commands: `init`, `<id>`, `finish`, `all`, `status`, `restart`, `list` |
 | `scripts/install-workflow.sh` | One command per workflow (what `stock-setup.sh <id>` runs) |
 | `scripts/provision.sh` | The engine: nodes, models, Ollama models; `--status`, `--list-workflows` |
 | `scripts/common.sh` | Shared helpers (supervisor, model paths, user dir, Ollama service) |
 | `scripts/patch-workflow.py` | Applies `config/patches/*.patch.json` |
 | `extra_model_paths.yaml` | Points ComfyUI at `/workspace/models` |
-| `Dockerfile`, `scripts/entrypoint.sh`, `scripts/start.sh`, `vastai/` | Golden image (alternative path, §8) |
 | `scripts/save-progress.sh` | Optional off-box backup (git for workflows, rclone for outputs) |
 
 Instance paths (stock template): ComfyUI `/workspace/ComfyUI` on **port 18188** behind
 Vast's proxy (the Open button), python `/venv/main/bin/python`, repo
 `/workspace/comfyui-vastai`, models `/workspace/models`, user dir
 `/workspace/comfyui-user` (linked as `ComfyUI/user`), workflows
-`/workspace/comfyui-user/default/workflows`, Ollama weights `/workspace/ollama-models`.
-The template runs ComfyUI under supervisor; the scripts restart that process and
-never start a second server.
+`/workspace/comfyui-user/default/workflows`, outputs `/workspace/ComfyUI/output`,
+Ollama weights `/workspace/ollama-models`. The template runs ComfyUI under supervisor;
+the scripts restart that process and never start a second server.
 
-## 2. Fresh stock-template instance (runbook)
+## 2. Setting up a fresh instance
 
-Rent Vast's stock **ComfyUI** template on a single 80 GB GPU. Give it enough disk for
-the workflows you want (§7) plus about 50 GB of headroom.
+Use Vast's stock **ComfyUI** template on a single 80 GB GPU, with enough disk for the
+workflows you want (§8) plus about 50 GB of headroom. Either way below, the first boot
+with a couple of workflows takes roughly 20-45 minutes, mostly downloads.
+
+### A. Hands-off (PROVISIONING_SCRIPT)
+
+Vast's templates run a script from the `PROVISIONING_SCRIPT` URL once per new instance
+and hold ComfyUI back until it finishes. One-time setup in the console:
+
+1. Templates → find Vast's **ComfyUI** template → **Edit** (this saves your own copy).
+2. Environment Variables, add:
+
+   | Variable | Value |
+   |---|---|
+   | `PROVISIONING_SCRIPT` | `https://raw.githubusercontent.com/iamwicked/comfyui-vastai/main/scripts/vast-provision.sh` |
+   | `WORKFLOWS` | ids to install, comma-separated, e.g. `krea2,wan-animate`; `all` for everything in `all`; empty for tools + Ollama only |
+   | `UPDATE_COMFYUI` | optional, `1`: move ComfyUI core to the newest release first (MiniMax H3 needs >= 0.30.0; the log warns when core is older) |
+
+   If the template already has a `PROVISIONING_SCRIPT` value, replace it.
+3. Tokens: put `HF_TOKEN` and `CIVITAI_TOKEN` in Vast's account-level Environment
+   Variables (Settings → Environment Variables). If you put them in the template
+   instead, keep that template private.
+4. Save, then rent with this template.
+
+On boot the script clones (or updates) the repo in `/workspace/comfyui-vastai`, runs
+`stock-setup.sh init`, installs each workflow in `WORKFLOWS` one after another, runs
+`finish`, and prints a summary. Follow it in the Instance Portal logs, or in a terminal:
+
+```bash
+tail -f /var/log/portal/provisioning.log
+```
+
+It always exits cleanly so ComfyUI starts even if a download failed; the summary names
+what to re-run by hand (§2B commands). It runs once per new instance: a stop/start does
+not re-run it. To add a workflow later, run `stock-setup.sh <id>` in a terminal.
+
+### B. By hand (Jupyter terminal)
 
 **Terminal 1** (Jupyter → Terminal). The token prompts keep the values out of shell
-history; paste each token when asked:
+history; paste each token when asked (skip this line if the tokens are already
+account-level variables: `echo ${HF_TOKEN:+set}` prints `set`):
 
 ```bash
 read -rsp "HF token: " HF_TOKEN; echo; read -rsp "Civitai token: " CIVITAI_TOKEN; echo; export HF_TOKEN CIVITAI_TOKEN
@@ -50,10 +87,12 @@ bash /workspace/comfyui-vastai/scripts/stock-setup.sh init
 
 `init` installs missing tools (hf CLI, zstd, unzip, wget), installs
 `extra_model_paths.yaml`, links the user dir, installs Ollama and registers it with
-supervisor on 127.0.0.1, then restarts ComfyUI. It warns when ComfyUI core is older
-than a workflow needs; `UPDATE_COMFYUI=1 bash .../stock-setup.sh init` updates core.
+supervisor on 127.0.0.1, then restarts ComfyUI if anything changed. It warns when
+ComfyUI core is older than a workflow needs; `UPDATE_COMFYUI=1 bash .../stock-setup.sh init`
+moves core to the newest ComfyUI release (Vast's image sits on a release tag), and
+`COMFYUI_REF=<tag> bash .../stock-setup.sh init` pins it instead.
 
-**One terminal per workflow**, in parallel if you like (export the tokens in each):
+**One terminal per workflow**, in parallel if you like (tokens in each):
 
 ```bash
 read -rsp "HF token: " HF_TOKEN; echo; read -rsp "Civitai token: " CIVITAI_TOKEN; echo; export HF_TOKEN CIVITAI_TOKEN
@@ -88,7 +127,25 @@ interrupted downloads, and waits for another terminal that is fetching the same 
 A command that hit problems lists them and exits non-zero; fix the cause (usually a
 token or a licence to accept) and run the same command again.
 
-## 3. Workflow catalog
+## 3. Between sessions
+
+| How you end a session | Next boot | Time to first render |
+|---|---|---|
+| **Stop** the instance | Start it; supervisor brings ComfyUI and Ollama back, provisioning does not re-run | ~2-3 min |
+| **Destroy**, with a Vast volume mounted at `/workspace` | Rent the same machine with the volume; the provisioning script (or `init`, your workflows, `finish` by hand) reinstalls tools and node dependencies into the fresh venv; models and workflows are already there | ~10-15 min |
+| **Destroy**, nothing kept | Same as a fresh instance (§2) | 20-45 min |
+
+- A stopped instance keeps billing for its disk, and if someone rents that GPU in the
+  meantime you cannot start it again until they're done.
+- Volumes are tied to one physical machine: create one from the machine's Storage
+  options, mount it at `/workspace`, and re-rent that machine next time.
+- On a reused volume the node code survives but `/venv/main` is new. The engine keeps
+  its "dependencies installed" records inside the Python environment, so they vanish
+  with the old venv and the requirements are installed again. (If Vast keeps the venv
+  on the volume too, `sync_environment=true`, the records travel with it and nothing
+  is reinstalled.)
+
+## 4. Workflow catalog
 
 `bash scripts/stock-setup.sh <id>`. Sizes are downloads, verified 2026-09-28
 (shared files count once per workflow).
@@ -109,7 +166,7 @@ token or a licence to accept) and run the same command again.
 `all` = `qwen21 qwen21-edit krea2 edit-2509 krea-style wan-i2v minimax-h3 wan-animate global`:
 **281.7 GB** of files plus about 10 GB of Ollama models.
 
-## 4. Workflow notes
+## 5. Workflow notes
 
 ### qwen21 / qwen21-edit
 - Templates: `image_qwen_image_2_1_t2i.json`, `image_qwen_image_2_1_image_edit.json`,
@@ -186,7 +243,7 @@ is fetched on-instance and never committed. Needs **ComfyUI >= 0.30.0**.
 - Weights are the variants Comfy-Org's own H3 templates use (pruned int8 FL2VA/REF2VA,
   Qwen3-VL 32B nvfp4 encoder, int8 video VAE, fp32 audio VAE). On first load, check
   that the graph's loaders show these files; if a loader shows a missing file, pick the
-  matching one from its dropdown and save (see §10, open item 1).
+  matching one from its dropdown and save (see §11, open item 1).
 - Evaluated and rejected: the Spectrum cache node (approximate: output differs from
   native even with the same seed).
 
@@ -215,7 +272,7 @@ rgthree, KJNodes, controlnet_aux, Custom-Scripts, GGUF, comfyui-ollama, `qwen3:8
 InstaPic LoRA; the base `black-forest-labs/FLUX.2-klein-9B` needs HF *approval*, so
 it and the two Flux workflows stay commented in `models.list`.
 
-## 5. Config formats
+## 6. Config formats
 
 ```
 models.list        kind|filename|source|source_id|subdir|wf:ids
@@ -243,11 +300,15 @@ catalog.txt        id|in_all|min_comfyui|description
 - Re-fetching a workflow JSON: delete `.provisioned-<name>` in the workflows folder
   (and the JSON) and re-run. Deleted workflows are not re-downloaded otherwise.
 
-## 6. How the engine works
+## 7. How the engine works
 
-- Phases: `nodes` (clone or pull each pack; requirements and `install.py` only when the
-  commit changed, constrained to the installed torch/torchvision/torchaudio/xformers),
-  `models`, `ollama`; `PHASES=comfyui` updates ComfyUI core.
+- Phases: `nodes` (clone or pull each pack; requirements and `install.py` run when the
+  commit changed or the Python environment is new, constrained to the installed
+  torch/torchvision/torchaudio/torchcodec/xformers), `models`, `ollama`;
+  `PHASES=comfyui` (run by `init` on request) updates core to the newest release tag,
+  fast-forwards it if it is on a branch, or pins `COMFYUI_REF`.
+- "Dependencies installed" records live in `<venv>/.comfyui-vastai/nodes`, next to the
+  packages they describe, so a new venv on a reused volume reinstalls them.
 - Downloads land in `/workspace/.staging` on the same volume, then move into place, so
   interrupted downloads resume and half-files never appear under the final name.
   Civitai tokens are handed to curl on stdin. HTML/JSON error pages are rejected.
@@ -255,63 +316,67 @@ catalog.txt        id|in_all|min_comfyui|description
   and two terminals never download the same file at once.
 - Ollama: an already running server is used; otherwise a temporary one is started and
   stopped by PID afterwards.
+- While Vast's first-boot provisioning runs (`/.provisioning` present), ComfyUI is held
+  back by the template, so the scripts skip their ComfyUI stop/restart steps.
 - `bash scripts/provision.sh --status [id]` lists missing files and node packs.
 - Progress is always visible (`hf` bars, `curl -#`, wget bar, `git --progress`).
 
-## 7. Disk budget
+## 8. Disk budget
 
-Per-workflow sizes are in §3; `all` is 281.7 GB of files plus about 10 GB of Ollama
+Per-workflow sizes are in §4; `all` is 281.7 GB of files plus about 10 GB of Ollama
 weights. Staging needs room for the largest file in flight (21 GB for an H3 UNet, more
 with parallel terminals), and outputs grow over time. Rent at least 350-400 GB for
-`all`, or size the disk for just the workflows you plan to use.
+`all`, or size the disk (or volume) for just the workflows you use.
 
-## 8. Golden image (alternative path)
+## 9. Why there is no custom Docker image
 
-`Dockerfile` → GitHub Actions → `ghcr.io/iamwicked/comfyui-vastai:latest`, booted by
-`entrypoint.sh` (SSH, persistent layout, `BOOT_WORKFLOWS` provisioning, default
-`global`) and `start.sh` (Ollama on 127.0.0.1, ComfyUI on 8188). Status: every build
-up to v5 failed because the Ollama installer needs `zstd`; v6 adds it, and the next
-push will show whether the build now passes (disk cleanup and non-fatal cache export
-were added too). After the first green build, make the GHCR package public or give
-Vast registry credentials. Template fields and CLI: `vastai/template.md`,
-`vastai/setup.sh` (entrypoint launch mode via `--args`).
+Vast's stock ComfyUI image is already a prebuilt image with ComfyUI, torch,
+ComfyUI-Manager, SageAttention, Jupyter, supervisor and the token proxy. The slow parts
+of a session are model downloads (solved by keeping `/workspace`, §3) and node
+dependencies, not the base install, and hands-off boots work through
+`PROVISIONING_SCRIPT` (§2A). The earlier golden image duplicated the stock image
+without Jupyter, the proxy or supervisor, and never built successfully, so v6 retired
+it. It is in git history up to commit `d154df9`.
 
-ComfyUI has no login. On the stock template Vast's proxy puts a token in front of it;
-the golden image maps port 8188 directly, so keep that URL private.
+A custom image would only pay off if it were built FROM Vast's ComfyUI image with the
+custom nodes and their Python packages baked in, and fresh instances were frequent.
 
-## 9. Credentials
+## 10. Credentials
 
-- `HF_TOKEN` and `CIVITAI_TOKEN` exist only as environment variables in the terminal
-  that needs them. Enter them with `read -rs` (§2) so they stay out of shell history.
-  They are never written to files, the repo, or chat logs.
+- `HF_TOKEN` and `CIVITAI_TOKEN` exist only as environment variables: Vast account-level
+  variables (Settings → Environment Variables), a private template, or typed with
+  `read -rs` in the terminal that needs them (§2B), which keeps them out of shell
+  history. They are never written to files, the repo, or chat logs.
 - Gated HF repos also need the licence accepted on huggingface.co with the same
   account (the NSFW UMT5 repo is flagged "not for all audiences").
 - `save-progress.sh` sends `GIT_TOKEN` as an env-only HTTP header, not in the URL.
+- ComfyUI has no login of its own; Vast's proxy puts a token in front of it. Don't share
+  the instance link.
 - Ollama listens on 127.0.0.1 only. To use it from your own machine (e.g. the
   "AI Prompt Assistant Pro" desktop app), tunnel it:
   `ssh -p <port> root@<host> -L 11434:127.0.0.1:11434`.
 
-## 10. Open items (to confirm on the next instance)
+## 11. Open items (to confirm on the next instance)
 
 1. **H3 loader filenames**: the all-in-one graph is login-gated, so its loaders could
    not be compared with `models.list`. On first load, check each loader (or drop the EN
    JSON into `~/Downloads` on the Mac so the list can be matched to it).
 2. **wan-i2v stock files (35.3 GB)**: the stock Wan2.2 I2V high/low DiTs and stock UMT5
    are downloaded but the Remix wiring doesn't load them. Keep or drop.
-3. **Golden image**: fixed but unproven until the next Actions run; keep or retire.
-4. **Bundled nightfunnels graph** in a public repo (credits kept). Keep, or fetch it at
+3. **Bundled nightfunnels graph** in a public repo (credits kept). Keep, or fetch it at
    install time instead.
-5. **Word guide**: its minimax-h3 section predates the seven-mode graph.
+4. **Word guide**: its minimax-h3 section predates the seven-mode graph.
 
-## 11. Problem log
+## 12. Problem log
 
 ### 2026-09-28 — v6 rebuilt
 - The first v6 (local commits `3fc2ae2` … `46adf8e`) lived only in a previous agent's
   environment and was lost; GitHub stopped at v5 (`6c973ad`). Rebuilt as documented in
   `CHANGELOG.md`.
-- Every Actions build since `c4f5e92` failed at `curl … ollama.com/install.sh | sh`:
-  Ollama now ships `.tar.zst` and the installer exits without `zstd`. Reproduced in
-  `ubuntu:22.04`. Fixed in the Dockerfile and in `init`.
+- Every Actions build of the golden image since `c4f5e92` failed at
+  `curl … ollama.com/install.sh | sh`: Ollama now ships `.tar.zst` and the installer
+  exits without `zstd` (reproduced on linux/amd64). `init` installs `zstd` before
+  Ollama; the golden image itself was then retired (§9).
 - Comfy-Org's Qwen-Image 2.1 templates gained a 9.5 GB prompt-enhancer encoder on
   2026-09-25, one day after the templates were wired in from `main`. All template URLs
   are now pinned to commit SHAs.
@@ -320,12 +385,16 @@ the golden image maps port 8188 directly, so keep that URL private.
   proxy already listens. Both fixed.
 - `rclone sync` in `save-progress.sh` would have deleted the backup when run from an
   empty volume; `RCLONE_CONFIG` held config text although rclone reads it as a path.
-- `vastai/setup.sh` used `--ssh`, which makes Vast skip the image entrypoint, and an
-  invalid GPU name (`RTX_A100_80GB`).
 - The nightfunnels graph contains a RunningHub-only `RHHiddenNodes` feeding the LoRA
   chain; it cannot load elsewhere and was removed.
 - `provision.sh` (v5) gave lines without a trailing `|` their source id as a folder, and
   its `pkill -f "ollama serve"` killed any running Ollama. Both fixed.
+- Node "dependencies installed" records were first kept on `/workspace`, which survives
+  a new instance while `/venv/main` does not, so a reused volume would have skipped the
+  reinstall. They now live inside the venv.
+- Vast's ComfyUI image checks core out at a release tag (detached HEAD), so the
+  `git pull` behind `UPDATE_COMFYUI=1` could not work there. An update now moves to
+  the newest release tag.
 
 ### 2026-09-24 — v1 to v5
 - Actions `docker/*@v5` tags did not exist (use v4); `ensurepip` is disabled on

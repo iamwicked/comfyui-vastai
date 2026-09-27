@@ -32,6 +32,16 @@ verified against HuggingFace / Civitai / GitHub on 2026-09-28.
 - **wan-i2v**: low-noise Remix DiT now comes from the original `FX-FeiHou/wan2.2-Remix`
   repo (byte-identical to the old `limiao1666` mirror).
 
+### Hands-off first boot (`scripts/vast-provision.sh`)
+- New target for Vast's `PROVISIONING_SCRIPT`. In a copy of the stock ComfyUI template,
+  set `PROVISIONING_SCRIPT` to the script's raw URL and `WORKFLOWS` to the ids to
+  install, comma-separated (`all` = everything in `all`). On first boot it clones or updates the repo,
+  runs `init`, each workflow in turn, then `finish`, and prints a summary of what to
+  re-run. It always exits 0, so ComfyUI starts even when a download failed and Vast
+  marks provisioning complete instead of retrying it.
+- While Vast's `/.provisioning` marker exists (the template holds ComfyUI back until
+  provisioning ends), the scripts skip their ComfyUI stop/start/restart steps.
+
 ### Engine (`scripts/provision.sh`)
 - Download progress is always visible: `hf` progress bars, `curl -#`,
   `wget --progress=bar:force:noscroll`, `git --progress`.
@@ -51,9 +61,18 @@ verified against HuggingFace / Civitai / GitHub on 2026-09-28.
   idempotent, applied after download.
 - Ollama models are per-workflow (`ollama-models.txt` takes `wf:` tags). A temporary
   Ollama server is stopped by PID, so a running server is never killed.
-- Custom-node requirements install with a torch/torchvision/torchaudio/xformers
-  constraint, and only when the node's commit changed.
+- Custom-node requirements install with a torch/torchvision/torchaudio/torchcodec/xformers
+  constraint, and only when the node's commit changed or the Python environment is
+  new. The "installed" stamps live in `<venv>/.comfyui-vastai/nodes`; kept on
+  `/workspace` they outlived the venv, so a reused volume would have skipped the
+  reinstall into the fresh `/venv/main`.
+- ComfyUI core changes only in `PHASES=comfyui` (`init` with `UPDATE_COMFYUI=1` or
+  `COMFYUI_REF`): Vast's image sits on a release tag (detached HEAD, where `git pull`
+  fails), so an update moves to the newest release tag; a branch checkout is
+  fast-forwarded; `COMFYUI_REF` pins a tag or commit.
 - `--status [id]` reports per workflow what is installed and what is missing.
+- Remote list overrides (`MODELS_LIST_URL`, `NODES_TXT_URL`, `OLLAMA_MODELS_TXT_URL`)
+  removed along with the golden image they were made for.
 - Fixed: lines without a trailing `|` got the source id as their folder.
 
 ### Stock template (`scripts/stock-setup.sh`, `install-workflow.sh`, `common.sh`)
@@ -64,26 +83,29 @@ verified against HuggingFace / Civitai / GitHub on 2026-09-28.
 - `finish` = global nodes + global Ollama models + restart + status. New `status`,
   `restart`, `dl <id>`. Running with no argument prints help (it used to run `all`,
   which is now about 290 GB).
-- No more `python3.11` symlink shim: the engine finds `/venv/main/bin/python`.
+- No more `python3.11` symlink shim or `/opt` fallbacks: the scripts target
+  `/workspace/ComfyUI` and `/venv/main/bin/python`.
 
-### Golden image
-- Build fixed: `zstd` added (the Ollama installer failed without it, which is why
-  every Actions build since `c4f5e92` failed). Disk cleanup step and non-fatal cache
-  export added to the workflow; not yet proven by a green build.
-- Ollama binds to 127.0.0.1 by default (`OLLAMA_BIND` to override); port 11434 is no
-  longer mapped. `BOOT_WORKFLOWS` (default `global`) chooses what boot provisions,
-  and provisioning problems no longer stop ComfyUI from starting.
-- `vastai/setup.sh`: entrypoint launch mode (`--args`; `--ssh` skipped the entrypoint),
-  working GPU query, SSH key quoting, instance id parsed from the JSON reply.
+### Golden image retired
+- Removed `Dockerfile`, `scripts/entrypoint.sh`, `scripts/start.sh`,
+  `.github/workflows/build.yml`, `vastai/setup.sh` and `vastai/template.md`; they
+  remain in git history up to `d154df9`. Vast's stock image already ships ComfyUI,
+  torch, Jupyter, supervisor and the token proxy; the golden image dropped the last
+  three, and every Actions build since `c4f5e92` failed (the Ollama installer needs
+  `zstd`). Hands-off boots use `PROVISIONING_SCRIPT` instead. Reasoning, and when a
+  custom image would pay off: `REFERENCE.md` §9.
 
 ### Backups (`scripts/save-progress.sh`)
 - `rclone copy` instead of `sync` (sync from an empty volume would delete the backup).
 - Inline rclone config moved to `SAVE_RCLONE_CONF` (rclone reads `RCLONE_CONFIG` as a path).
 - Git token sent as an env-only HTTP header instead of inside the push URL.
+- `OUTPUT_DIR` defaults to `/workspace/ComfyUI/output`.
 
 ### Docs
-- `REFERENCE.md` rewritten around the stock-template runbook; the
-  `/workspace/.vastai-tokens` helper file is gone (tokens are never written to disk).
+- `README.md` and `REFERENCE.md` rewritten around the two ways to set up an instance
+  (hands-off and by hand) and what each way of ending a session means for the next
+  one. The `/workspace/.vastai-tokens` helper file is gone (tokens are never written
+  to disk).
 
 ## v5 — `6c973ad` (2026-09-24)
 Downloads organised by workflow: `wf:` tags, `WORKFLOW=<id>`, `install-workflow.sh`,
