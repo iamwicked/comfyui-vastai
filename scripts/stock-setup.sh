@@ -13,7 +13,8 @@
 #   bash scripts/stock-setup.sh list          # workflow ids
 #
 # Export HF_TOKEN and CIVITAI_TOKEN in EVERY terminal before running.
-# UPDATE_COMFYUI=1 with init also updates ComfyUI core (MiniMax H3 needs >= 0.30.0).
+# UPDATE_COMFYUI=1 with init also updates ComfyUI core to the newest release
+# (MiniMax H3 needs >= 0.30.0); COMFYUI_REF=<tag|commit> pins it instead.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +40,7 @@ phase_init() {
   check_disk
   have="$(comfyui_version)"
   say "ComfyUI ${have:-unknown} at $COMFYUI_DIR, python $PYTHON"
-  if [ "${UPDATE_COMFYUI:-0}" = 1 ] || [ "${UPDATE_COMFYUI:-}" = true ]; then
+  if [ "${UPDATE_COMFYUI:-0}" = 1 ] || [ "${UPDATE_COMFYUI:-}" = true ] || [ -n "${COMFYUI_REF:-}" ]; then
     PHASES=comfyui bash "$SCRIPT_DIR/provision.sh" || warn "ComfyUI core update had problems"
     say "ComfyUI now $(comfyui_version)"
     NEED_RESTART=1

@@ -176,18 +176,33 @@ looks_like_error_page() { # $1: file -> 0 if it's an HTML/JSON error body instea
   return 1
 }
 
-# ---- 1. optional ComfyUI core update / pin ----
+# ---- 1. ComfyUI core update / pin (PHASES=comfyui, run by `stock-setup.sh init`) ----
+# Vast's image checks ComfyUI out at a release tag (detached HEAD), where
+# `git pull` cannot work: there, "update" means the newest release tag. A
+# checkout on a branch is fast-forwarded. COMFYUI_REF (a tag or commit) pins.
 update_comfyui() {
-  if [ "${UPDATE_COMFYUI:-false}" = "true" ]; then
-    log "updating ComfyUI core ($COMFYUI_DIR)"
-    git -C "$COMFYUI_DIR" pull --ff-only --progress || warn "ComfyUI pull failed"
-    pip_install -r "$COMFYUI_DIR/requirements.txt" || warn "ComfyUI requirements reinstall failed"
-  elif [ -n "${COMFYUI_REF:-}" ]; then
-    log "pinning ComfyUI to $COMFYUI_REF"
-    { git -C "$COMFYUI_DIR" fetch --progress --depth 1 origin "$COMFYUI_REF" \
-        && git -C "$COMFYUI_DIR" checkout "$COMFYUI_REF" \
-        && pip_install -r "$COMFYUI_DIR/requirements.txt"; } || warn "could not pin ComfyUI to $COMFYUI_REF"
+  local target="${COMFYUI_REF:-}" branch
+  if [ -z "$target" ] && branch="$(git -C "$COMFYUI_DIR" symbolic-ref -q --short HEAD)"; then
+    log "updating ComfyUI core ($COMFYUI_DIR, branch $branch)"
+    git -C "$COMFYUI_DIR" pull --ff-only --progress || { fail "ComfyUI pull failed on branch $branch"; return 0; }
+  else
+    git -C "$COMFYUI_DIR" fetch --progress --tags origin || { fail "could not fetch ComfyUI from origin"; return 0; }
+    if [ -z "$target" ]; then
+      target="$(git -C "$COMFYUI_DIR" tag -l 'v[0-9]*' --sort=-v:refname)" || target=""
+      target="${target%%$'\n'*}"   # newest first; no pipe into head (pipefail + SIGPIPE)
+      [ -n "$target" ] || { fail "no ComfyUI release tags found in $COMFYUI_DIR"; return 0; }
+      log "updating ComfyUI core to the newest release: $target"
+    else
+      log "pinning ComfyUI to $target"
+    fi
+    if ! git -C "$COMFYUI_DIR" -c advice.detachedHead=false checkout "$target"; then
+      # A commit that no fetched branch or tag contains: fetch it by id.
+      { git -C "$COMFYUI_DIR" fetch --progress origin "$target" \
+          && git -C "$COMFYUI_DIR" -c advice.detachedHead=false checkout FETCH_HEAD; } \
+        || { fail "could not check out ComfyUI $target (local changes in $COMFYUI_DIR?)"; return 0; }
+    fi
   fi
+  pip_install -r "$COMFYUI_DIR/requirements.txt" || fail "ComfyUI requirements reinstall failed"
 }
 
 # ---- 2. custom nodes ----
@@ -206,7 +221,6 @@ install_nodes() {
   local list="$CONFIG_DIR/nodes.txt"
   [ -f "$list" ] || { log "no nodes.txt, skipping"; return 0; }
   lock_acquire nodes   # pip is not safe to run twice at once in one venv
-  update_comfyui
   make_constraints
   local stamp_dir
   stamp_dir="$(env_stamp_dir)"
@@ -558,8 +572,8 @@ main() {
   log "config=$CONFIG_DIR comfyui=$COMFYUI_DIR models=$MODELS_DIR python=$PYTHON"
   log "run: ${WORKFLOW:-full (all)}  phases: $PHASES"
   case ",$PHASES," in *,comfyui,*)
-    # Core update on request only (stock-setup.sh init with UPDATE_COMFYUI=1).
-    lock_acquire nodes; make_constraints; UPDATE_COMFYUI=true update_comfyui; lock_release ;;
+    # Core update or pin on request only (stock-setup.sh init with UPDATE_COMFYUI=1 or COMFYUI_REF).
+    lock_acquire nodes; make_constraints; update_comfyui; lock_release ;;
   esac
   case ",$PHASES," in *,nodes,*)  install_nodes ;; esac
   case ",$PHASES," in *,models,*) download_models ;; esac
