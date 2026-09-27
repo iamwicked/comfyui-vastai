@@ -156,10 +156,11 @@ pip_install() { # args passed to pip; always constrained to the installed torch 
 CONSTRAINTS="$STATE_DIR/constraints.txt"
 make_constraints() {
   mkdir -p "$STATE_DIR"
-  # Custom-node requirements may never replace the CUDA torch build ComfyUI runs on.
+  # Custom-node requirements may never replace the CUDA torch build ComfyUI runs on
+  # (torchcodec too: Vast's image treats it as part of the same ABI-bound set).
   "$PYTHON" - > "$CONSTRAINTS" <<'EOF' || : > "$CONSTRAINTS"
 import importlib.metadata as md
-for name in ("torch", "torchvision", "torchaudio", "xformers"):
+for name in ("torch", "torchvision", "torchaudio", "torchcodec", "xformers"):
     try:
         print(f"{name}=={md.version(name)}")
     except md.PackageNotFoundError:
@@ -190,14 +191,28 @@ update_comfyui() {
 }
 
 # ---- 2. custom nodes ----
+# "Dependencies installed" stamps live inside the Python environment they describe.
+# The node code sits on /workspace and survives a new instance, but the venv does
+# not; stamps kept inside the venv vanish with it, so requirements get reinstalled.
+env_stamp_dir() {
+  local prefix
+  prefix="$("$PYTHON" -c 'import sys; print(sys.prefix)' 2>/dev/null || true)"
+  if [ -n "$prefix" ] && [ -d "$prefix" ] && [ -w "$prefix" ]; then
+    printf '%s/.comfyui-vastai/nodes' "$prefix"
+  fi   # unknown or read-only environment: print nothing, never skip installs
+}
+
 install_nodes() {
   local list="$CONFIG_DIR/nodes.txt"
   [ -f "$list" ] || { log "no nodes.txt, skipping"; return 0; }
   lock_acquire nodes   # pip is not safe to run twice at once in one venv
   update_comfyui
   make_constraints
-  mkdir -p "$STATE_DIR/nodes" "$COMFYUI_DIR/custom_nodes"
-  local line url ref tag name dest existing before after stamp
+  local stamp_dir
+  stamp_dir="$(env_stamp_dir)"
+  if [ -n "$stamp_dir" ]; then mkdir -p "$stamp_dir"; else warn "cannot keep dependency stamps for $PYTHON; requirements reinstall every run"; fi
+  mkdir -p "$COMFYUI_DIR/custom_nodes"
+  local line url ref tag name dest existing after stamp
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
     case "$(trim "$line")" in ''|\#*) continue ;; esac
@@ -209,9 +224,7 @@ install_nodes() {
     # Same pack installed under another case (ComfyUI-Manager / registry installs)?
     existing="$(find "$COMFYUI_DIR/custom_nodes" -mindepth 1 -maxdepth 1 -iname "$name" -print -quit 2>/dev/null || true)"
     [ -n "$existing" ] && dest="$existing"
-    before=""
     if [ -d "$dest/.git" ]; then
-      before="$(git -C "$dest" rev-parse HEAD 2>/dev/null || true)"
       log "updating node: $name"
       git -C "$dest" pull --ff-only --progress || warn "pull failed for $name (pinned tag or local changes) — keeping current version"
     elif [ -d "$dest" ]; then
@@ -225,9 +238,9 @@ install_nodes() {
       fi
     fi
     after="$(git -C "$dest" rev-parse HEAD 2>/dev/null || echo unknown)"
-    stamp="$STATE_DIR/nodes/$(basename "$dest").head"
-    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$after" ] && [ "$before" = "$after" ]; then
-      log "dependencies already installed for $(basename "$dest") @ ${after:0:10}"
+    stamp="${stamp_dir:+$stamp_dir/$(basename "$dest").head}"
+    if [ -n "$stamp" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$after" ]; then
+      log "dependencies already installed for $(basename "$dest") @ ${after:0:10} in this environment"
       continue
     fi
     local ok=1
@@ -239,7 +252,7 @@ install_nodes() {
       log "running install.py for $(basename "$dest")"
       (cd "$dest" && "$PYTHON" install.py) || { ok=0; fail "install.py failed for $(basename "$dest")"; }
     fi
-    if [ "$ok" = 1 ]; then printf '%s' "$after" > "$stamp"; fi
+    if [ "$ok" = 1 ] && [ -n "$stamp" ]; then printf '%s' "$after" > "$stamp"; fi
   done < "$list"
   lock_release
 }
