@@ -6,7 +6,7 @@
 #        "wf:global,<ids>" installs it for `global`/finish AND for each listed id,
 #        so every per-workflow install is complete on its own.
 # Requirements are installed with a constraint that keeps the running torch build.
-# ComfyUI-Manager ships with the stock template and the golden image: not listed.
+# ComfyUI-Manager ships with the stock template: not listed.
 
 # --- general-purpose (global, plus the workflows that load them) ---
 https://github.com/cubiq/ComfyUI_essentials||wf:global,wan-animate

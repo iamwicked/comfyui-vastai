@@ -1,22 +1,16 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034  # NEED_RESTART and friends are read by the scripts that source this file
 # common.sh — helpers shared by stock-setup.sh and install-workflow.sh.
-# Sourced, not executed. Works on the stock Vast.ai ComfyUI template
-# (/workspace/ComfyUI, /venv/main, supervisor, ComfyUI on :18188) and on the
-# golden image (/opt/ComfyUI, no supervisor).
+# Sourced, not executed. Targets the stock Vast.ai ComfyUI template:
+# /workspace/ComfyUI, /venv/main, supervisor, ComfyUI on :18188 behind Vast's proxy.
 
 COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${REPO_DIR:-$(dirname "$COMMON_DIR")}"
 CONFIG_DIR="${CONFIG_DIR:-$REPO_DIR/config}"
 WORKSPACE="${WORKSPACE:-/workspace}"
-if [ -z "${COMFYUI_DIR:-}" ]; then
-  if [ -d /workspace/ComfyUI ]; then COMFYUI_DIR=/workspace/ComfyUI
-  elif [ -d /opt/ComfyUI ]; then COMFYUI_DIR=/opt/ComfyUI
-  else COMFYUI_DIR=/workspace/ComfyUI; fi
-fi
+COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
 if [ -z "${PYTHON:-}" ]; then
   if [ -x /venv/main/bin/python ]; then PYTHON=/venv/main/bin/python
-  elif command -v python3.11 >/dev/null 2>&1; then PYTHON="$(command -v python3.11)"
   else PYTHON="$(command -v python3 || echo python3)"; fi
 fi
 USER_DIR="${USER_DIR:-$WORKSPACE/comfyui-user}"

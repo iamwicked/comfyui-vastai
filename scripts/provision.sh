@@ -31,15 +31,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
-# ---- paths (golden image: /opt/...; stock Vast template: /workspace/...) ----
-if [ -z "${CONFIG_DIR:-}" ]; then
-  if [ -f "$REPO_DIR/config/models.list" ]; then CONFIG_DIR="$REPO_DIR/config"
-  else CONFIG_DIR=/opt/comfyui-config; fi
-fi
-if [ -z "${COMFYUI_DIR:-}" ]; then
-  if [ -d /workspace/ComfyUI ]; then COMFYUI_DIR=/workspace/ComfyUI
-  else COMFYUI_DIR=/opt/ComfyUI; fi
-fi
+# ---- paths (stock Vast ComfyUI template) ----
+CONFIG_DIR="${CONFIG_DIR:-$REPO_DIR/config}"
+COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
 WORKSPACE="${WORKSPACE:-/workspace}"
 MODELS_DIR="${MODELS_DIR:-$WORKSPACE/models}"
 USER_DIR="${USER_DIR:-$WORKSPACE/comfyui-user}"
@@ -53,7 +47,6 @@ LOCK_DIR="$STATE_DIR/locks"
 
 if [ -z "${PYTHON:-}" ]; then
   if [ -x /venv/main/bin/python ]; then PYTHON=/venv/main/bin/python
-  elif command -v python3.11 >/dev/null 2>&1; then PYTHON="$(command -v python3.11)"
   else PYTHON="$(command -v python3 || echo python3)"; fi
 fi
 
@@ -180,18 +173,6 @@ looks_like_error_page() { # $1: file -> 0 if it's an HTML/JSON error body instea
   head="$(head -c 256 "$1" 2>/dev/null | tr -d '\0' | tr '[:upper:]' '[:lower:]')" || true
   case "$head" in *"<!doctype"*|*"<html"*|'{"error"'*|'{"message"'*) return 0 ;; esac
   return 1
-}
-
-# ---- 0. optional remote list overrides (golden image: edit lists without a rebuild) ----
-fetch_overrides() {
-  local var file
-  for pair in MODELS_LIST_URL:models.list NODES_TXT_URL:nodes.txt OLLAMA_MODELS_TXT_URL:ollama-models.txt; do
-    var="${pair%%:*}"; file="${pair#*:}"
-    if [ -n "${!var:-}" ]; then
-      log "fetching $file override from \$$var"
-      curl -fL -# "${!var}" -o "$CONFIG_DIR/$file" || warn "override fetch failed for $file"
-    fi
-  done
 }
 
 # ---- 1. optional ComfyUI core update / pin ----
@@ -563,7 +544,6 @@ main() {
   PHASES="${PHASES:-nodes,models,ollama}"
   log "config=$CONFIG_DIR comfyui=$COMFYUI_DIR models=$MODELS_DIR python=$PYTHON"
   log "run: ${WORKFLOW:-full (all)}  phases: $PHASES"
-  fetch_overrides
   case ",$PHASES," in *,comfyui,*)
     # Core update on request only (stock-setup.sh init with UPDATE_COMFYUI=1).
     lock_acquire nodes; make_constraints; UPDATE_COMFYUI=true update_comfyui; lock_release ;;

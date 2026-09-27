@@ -10,15 +10,12 @@
 #   RCLONE_REMOTE     e.g. myremote:comfyui-output
 #   SAVE_RCLONE_CONF  optional rclone.conf contents, written once to ~/.config/rclone
 #                     (RCLONE_CONFIG is rclone's own variable for the config PATH)
-#   OUTPUT_DIR        default: /workspace/output (golden image) or /workspace/ComfyUI/output
+#   OUTPUT_DIR        default: /workspace/ComfyUI/output
 set -euo pipefail
 
 WORKSPACE="${WORKSPACE:-/workspace}"
 USER_DIR="${USER_DIR:-$WORKSPACE/comfyui-user}"
-if [ -z "${OUTPUT_DIR:-}" ]; then
-  if [ -d "$WORKSPACE/output" ]; then OUTPUT_DIR="$WORKSPACE/output"
-  else OUTPUT_DIR="$WORKSPACE/ComfyUI/output"; fi
-fi
+OUTPUT_DIR="${OUTPUT_DIR:-$WORKSPACE/ComfyUI/output}"
 log() { echo "[save] $*"; }
 
 # ---- 1. Workflows -> git ----
