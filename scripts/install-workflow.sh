@@ -1,66 +1,61 @@
 #!/usr/bin/env bash
-# install-workflow.sh — ONE command per workflow.
-# Downloads every model that workflow needs, installs its custom nodes, and
-# drops its workflow JSON into ComfyUI's user dir. Idempotent: re-running only
-# fetches what's missing, so overlapping runs in parallel terminals are safe.
+# install-workflow.sh — ONE command per workflow: its models, custom nodes,
+# Ollama models and workflow JSON. Idempotent; parallel terminals are safe
+# (each file and the node/pip phase are locked).
 #
-#   bash scripts/install-workflow.sh qwen21
-#   bash scripts/install-workflow.sh --list     # show all workflow ids
+#   bash scripts/install-workflow.sh krea2
+#   bash scripts/install-workflow.sh --list
 #
-# Export HF_TOKEN and CIVITAI_TOKEN in this terminal first
-# (gated HF repos need the first, all Civitai downloads need the second).
+# Export HF_TOKEN and CIVITAI_TOKEN in this terminal first. Restart ComfyUI
+# afterwards so new nodes load:  bash scripts/stock-setup.sh restart
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_DIR="${CONFIG_DIR:-$REPO_DIR/config}"
-WORKSPACE="${WORKSPACE:-/workspace}"
+TAG=install-workflow
+# shellcheck source=scripts/common.sh
+. "$SCRIPT_DIR/common.sh"
 
-cmd="${1:-}"
-case "$cmd" in ""|--list|-l|list)
-  echo "One command installs everything each workflow needs:"
+main() {
+  local id="${1:-}" rc=0
+  case "$id" in
+    ""|--list|-l|list)
+      echo "One command installs everything a workflow needs:"
+      echo
+      bash "$SCRIPT_DIR/provision.sh" --list-workflows
+      echo
+      echo "usage:   bash scripts/install-workflow.sh <id>"
+      exit 0 ;;
+  esac
+  local ids
+  ids="$(grep -vE '^[[:space:]]*(#|$)' "$CONFIG_DIR/catalog.txt" | cut -d'|' -f1)"
+  if ! grep -qxF -- "$id" <<< "$ids"; then
+    warn "unknown workflow '$id'"; bash "$SCRIPT_DIR/provision.sh" --list-workflows; exit 1
+  fi
+  [ -n "${HF_TOKEN:-}" ] || warn "HF_TOKEN is not set in this terminal (gated HF files will fail)"
+  [ -n "${CIVITAI_TOKEN:-}" ] || warn "CIVITAI_TOKEN is not set in this terminal (Civitai files will be skipped)"
+
+  # The same safe, idempotent layout steps as `stock-setup.sh init`, so this
+  # also works on an instance where init was skipped.
+  ensure_prereqs
+  check_disk
+  ensure_model_paths
+  ensure_user_link
+  check_min_comfyui "$id"
+  if workflow_uses_ollama "$id"; then ensure_ollama || true; fi
+
+  say "installing workflow: $id"
+  WORKFLOW="$id" PHASES="${PHASES:-nodes,models,ollama}" bash "$SCRIPT_DIR/provision.sh" || rc=$?
   echo
-  bash "$SCRIPT_DIR/provision.sh" --list-workflows
+  bash "$SCRIPT_DIR/provision.sh" --status "$id" || true
   echo
-  echo "usage:   bash scripts/install-workflow.sh <id>"
-  echo "example: bash scripts/install-workflow.sh qwen21"
-  exit 0 ;;
-esac
+  if [ "$rc" -eq 0 ]; then
+    say "done. Restart ComfyUI once your installs finish so new nodes load:"
+  else
+    warn "finished with problems (see above). Fix them and re-run: bash scripts/install-workflow.sh $id"
+  fi
+  say "  bash $REPO_DIR/scripts/stock-setup.sh restart   (or run: finish)"
+  if [ "$NEED_RESTART" = 1 ]; then say "model paths / user dir changed in this run, so a restart is required."; fi
+  return "$rc"
+}
 
-if [ -z "${COMFYUI_DIR:-}" ]; then
-  if [ -d /workspace/ComfyUI ]; then COMFYUI_DIR=/workspace/ComfyUI      # stock template
-  elif [ -d /opt/ComfyUI ]; then COMFYUI_DIR=/opt/ComfyUI                # golden image
-  else echo "[install-workflow] error: no ComfyUI found (set COMFYUI_DIR)" >&2; exit 1; fi
-fi
-
-# Minimal prereqs (idempotent; the full env setup lives in stock-setup.sh init).
-if ! command -v hf >/dev/null; then
-  for py in /venv/main/bin/python python3; do
-    if command -v "$py" >/dev/null 2>&1; then
-      "$py" -m pip install -q "huggingface_hub[hf_xet]" \
-        && break || echo "[install-workflow][WARN] could not install 'hf' CLI" >&2
-    fi
-  done
-fi
-command -v unzip >/dev/null || (apt-get update -qq && apt-get install -y -qq unzip)
-command -v wget >/dev/null || (apt-get update -qq && apt-get install -y -qq wget)
-# provision.sh hardcodes python3.11 — shim it at the stock venv's python.
-if ! command -v python3.11 >/dev/null; then
-  vpy=/venv/main/bin/python
-  [ -x "$vpy" ] || vpy="$(command -v python3)"
-  ln -sf "$vpy" /usr/local/bin/python3.11
-fi
-# ComfyUI's user/ dir must be the persistent symlink, otherwise provisioned
-# workflows are invisible in the UI.
-mkdir -p "$WORKSPACE/comfyui-user"
-if [ ! -L "$COMFYUI_DIR/user" ]; then
-  cp -rn "$COMFYUI_DIR/user/." "$WORKSPACE/comfyui-user/" 2>/dev/null || true
-  rm -rf "$COMFYUI_DIR/user"
-  ln -s "$WORKSPACE/comfyui-user" "$COMFYUI_DIR/user"
-fi
-
-echo "[install-workflow] installing workflow: $cmd"
-WORKFLOW="$cmd" \
-  CONFIG_DIR="$CONFIG_DIR" COMFYUI_DIR="$COMFYUI_DIR" WORKSPACE="$WORKSPACE" \
-  bash "$SCRIPT_DIR/provision.sh"
-echo "[install-workflow] done — open ComfyUI → Workflows (top-left menu) to load it."
+main "$@"

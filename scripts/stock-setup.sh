@@ -1,96 +1,110 @@
 #!/usr/bin/env bash
-# stock-setup.sh — first-boot setup for a FRESH stock Vast.ai template instance
-# (ComfyUI at /workspace/ComfyUI, python at /venv/main). The golden-image flow
-# needs none of this; use this script when you're on the stock template instead.
+# stock-setup.sh — fresh-instance entrypoint for the STOCK Vast.ai ComfyUI
+# template (ComfyUI in /workspace/ComfyUI on :18188 behind Vast's proxy,
+# python in /venv/main, processes under supervisor). Never starts a second
+# ComfyUI: it restarts the template's own one when needed.
 #
-# Downloads are organized BY WORKFLOW: one command installs everything a single
-# workflow needs (its models + its custom nodes + its workflow JSON).
+#   bash scripts/stock-setup.sh init          # once per instance: tools, model paths, user dir, Ollama
+#   bash scripts/stock-setup.sh <id>          # one workflow (same as: dl <id>), parallel terminals OK
+#   bash scripts/stock-setup.sh finish        # global nodes + Ollama models, then restart ComfyUI
+#   bash scripts/stock-setup.sh all           # init + every workflow in `all` + finish, one terminal
+#   bash scripts/stock-setup.sh status [id]   # installed / missing, per workflow
+#   bash scripts/stock-setup.sh restart       # restart the running ComfyUI
+#   bash scripts/stock-setup.sh list          # workflow ids
 #
-#   bash scripts/stock-setup.sh init       # clone repo, prereqs, user-dir link
-#   bash scripts/stock-setup.sh qwen21     # install ONE workflow (any id below)
-#   bash scripts/stock-setup.sh all        # init + every workflow + finish
-#   bash scripts/stock-setup.sh finish     # global nodes + ollama (run once)
-#   bash scripts/stock-setup.sh list       # show workflow ids
-#
-# To saturate bandwidth, run several workflow installs in parallel terminals
-# (e.g. one terminal per workflow) — each is idempotent, so overlaps are safe.
-# Then run `finish` once in any terminal.
-#
-# Export HF_TOKEN and CIVITAI_TOKEN in EVERY terminal before running
-# (gated HF repos need the first, all Civitai downloads need the second).
+# Export HF_TOKEN and CIVITAI_TOKEN in EVERY terminal before running.
+# UPDATE_COMFYUI=1 with init also updates ComfyUI core (MiniMax H3 needs >= 0.30.0).
 set -euo pipefail
 
-REPO_URL="https://github.com/iamwicked/comfyui-vastai.git"
-REPO_DIR="${REPO_DIR:-/workspace/comfyui-vastai}"
-COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
-WORKSPACE="${WORKSPACE:-/workspace}"
-CONFIG_DIR="$REPO_DIR/config"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TAG=stock-setup
+# shellcheck source=scripts/common.sh
+. "$SCRIPT_DIR/common.sh"
+ARGS=("$@")
 
-# Every installable workflow (matches provision.sh --list-workflows, minus the
-# disabled `flux` stack whose base needs HF approval).
-ALL_WORKFLOWS="qwen21 qwen21-edit krea2 edit-2509 krea-style wan-i2v global"
-
-log() { echo "[stock-setup] $*"; }
+in_all_ids() { grep -vE '^[[:space:]]*(#|$)' "$CONFIG_DIR/catalog.txt" | awk -F'|' '$2=="yes"{print $1}'; }
 
 phase_init() {
-  if [ ! -d "$REPO_DIR/.git" ]; then
-    log "cloning $REPO_URL -> $REPO_DIR"
-    git clone -q "$REPO_URL" "$REPO_DIR"
-  else
-    log "repo present, pulling latest"
-    git -C "$REPO_DIR" pull --ff-only -q || true
+  local before after have
+  if [ -d "$REPO_DIR/.git" ] && [ "${SKIP_PULL:-0}" != 1 ]; then
+    before="$(git -C "$REPO_DIR" rev-parse HEAD)"
+    git -C "$REPO_DIR" pull --ff-only --progress || warn "could not fast-forward $REPO_DIR (local edits?) — using the current checkout"
+    after="$(git -C "$REPO_DIR" rev-parse HEAD)"
+    if [ "$before" != "$after" ] && [ -z "${STOCK_SETUP_REEXEC:-}" ]; then
+      say "repo updated ${before:0:7} -> ${after:0:7}; re-running with the new scripts"
+      STOCK_SETUP_REEXEC=1 exec bash "$REPO_DIR/scripts/stock-setup.sh" "${ARGS[@]}"
+    fi
   fi
-  # Prerequisites the stock template may lack (install only what's missing).
-  command -v hf >/dev/null || /venv/main/bin/python -m pip install -q "huggingface_hub[hf_xet]"
-  command -v ollama >/dev/null || curl -fsSL https://ollama.com/install.sh | sh
-  command -v unzip >/dev/null || (apt-get update -qq && apt-get install -y -qq unzip)
-  command -v wget >/dev/null || (apt-get update -qq && apt-get install -y -qq wget)
-  # provision.sh hardcodes python3.11 — point it at the stock venv's python.
-  local vpy=/venv/main/bin/python
-  [ -x "$vpy" ] || vpy="$(command -v python3)"
-  ln -sf "$vpy" /usr/local/bin/python3.11
-  log "python3.11 -> $(readlink /usr/local/bin/python3.11)"
-  # Link ComfyUI's user/ dir to the persistent layout BEFORE first start,
-  # otherwise provisioned workflows are invisible in the UI.
-  mkdir -p "$WORKSPACE/comfyui-user"
-  if [ ! -L "$COMFYUI_DIR/user" ]; then
-    log "linking $COMFYUI_DIR/user -> $WORKSPACE/comfyui-user"
-    cp -rn "$COMFYUI_DIR/user/." "$WORKSPACE/comfyui-user/"
-    rm -rf "$COMFYUI_DIR/user"
-    ln -s "$WORKSPACE/comfyui-user" "$COMFYUI_DIR/user"
-  else
-    log "user symlink already in place"
+  ensure_prereqs
+  check_disk
+  have="$(comfyui_version)"
+  say "ComfyUI ${have:-unknown} at $COMFYUI_DIR, python $PYTHON"
+  if [ "${UPDATE_COMFYUI:-0}" = 1 ] || [ "${UPDATE_COMFYUI:-}" = true ]; then
+    PHASES=comfyui bash "$SCRIPT_DIR/provision.sh" || warn "ComfyUI core update had problems"
+    say "ComfyUI now $(comfyui_version)"
+    NEED_RESTART=1
+  elif [ -n "$have" ] && ! version_ge "$have" 0.30.0; then
+    warn "MiniMax H3 needs ComfyUI >= 0.30.0 (this is $have). Update with: UPDATE_COMFYUI=1 bash $REPO_DIR/scripts/stock-setup.sh init"
   fi
+  ensure_model_paths
+  ensure_user_link
+  ensure_ollama || warn "Ollama is not running; krea2 prompt enhancement needs it"
+  if [ "$NEED_RESTART" = 1 ]; then comfy_ctl restart || true; fi
+  cat <<EOF
+
+[$TAG] init done. Next, one workflow per terminal (any order, parallel is fine):
+    bash $REPO_DIR/scripts/stock-setup.sh <id>      # ids: bash $REPO_DIR/scripts/stock-setup.sh list
+  then once, in any terminal:
+    bash $REPO_DIR/scripts/stock-setup.sh finish
+EOF
 }
 
-phase_workflow() {
-  local id="$1"
-  log "installing workflow: $id"
-  REPO_DIR="$REPO_DIR" COMFYUI_DIR="$COMFYUI_DIR" WORKSPACE="$WORKSPACE" \
-    bash "$REPO_DIR/scripts/install-workflow.sh" "$id"
-}
+phase_workflow() { bash "$SCRIPT_DIR/install-workflow.sh" "$1"; }
 
 phase_finish() {
-  log "installing global nodes + pulling ollama models (runs once)"
-  PHASES=nodes,ollama \
-    CONFIG_DIR="$CONFIG_DIR" COMFYUI_DIR="$COMFYUI_DIR" WORKSPACE="$WORKSPACE" \
-    bash "$REPO_DIR/scripts/provision.sh"
-  log "verify:"
-  ls "$WORKSPACE/comfyui-user/default/workflows/"
-  echo "---"
-  find "$WORKSPACE/models" -type f ! -name "*.tmp" | wc -l | xargs echo "model files:"
+  local rc=0
+  ensure_prereqs
+  ensure_model_paths
+  ensure_user_link
+  ensure_ollama || warn "Ollama is not running; Ollama models were not pulled"
+  say "installing global nodes + global Ollama models"
+  WORKFLOW=global PHASES=nodes,ollama bash "$SCRIPT_DIR/provision.sh" || rc=$?
+  comfy_ctl restart || true
+  echo
+  say "status per workflow:"
+  bash "$SCRIPT_DIR/provision.sh" --status || true
+  echo
+  say "workflows in ComfyUI (hard-refresh the browser tab):"
+  ls -1 "$USER_DIR/default/workflows" 2>/dev/null | sed 's/^/    /' || true
+  return "$rc"
 }
 
-cmd="${1:-all}"
-case "$cmd" in
-  init)   phase_init ;;
-  finish) phase_finish ;;
-  list)   bash "$REPO_DIR/scripts/install-workflow.sh" --list ;;
-  all)
-    phase_init
-    for id in $ALL_WORKFLOWS; do phase_workflow "$id"; done
-    phase_finish
-    ;;
-  *)      phase_workflow "$cmd" ;;   # any workflow id -> one-command install
-esac
-log "done."
+phase_all() {
+  local id failed=()
+  phase_init
+  for id in $(in_all_ids); do
+    phase_workflow "$id" || failed+=("$id")
+  done
+  phase_finish || true
+  if [ "${#failed[@]}" -gt 0 ]; then
+    warn "workflows with problems: ${failed[*]} — re-run: bash scripts/stock-setup.sh <id>"
+    return 3
+  fi
+}
+
+main() {
+  local cmd="${1:-help}"
+  case "$cmd" in
+    init)          phase_init ;;
+    finish)        phase_finish ;;
+    all)           phase_all ;;
+    dl)            phase_workflow "${2:?usage: stock-setup.sh dl <workflow-id>}" ;;
+    status)        bash "$SCRIPT_DIR/provision.sh" --status ${2:+"$2"} ;;
+    restart)       comfy_ctl restart ;;
+    list)          bash "$SCRIPT_DIR/provision.sh" --list-workflows ;;
+    help|-h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0" ;;
+    *)             phase_workflow "$cmd" ;;   # any workflow id
+  esac
+}
+
+main "$@"
