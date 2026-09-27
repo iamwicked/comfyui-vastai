@@ -1,0 +1,16 @@
+# catalog.txt — the workflow ids (single source of truth for every script).
+# Format:  id|in_all|min_comfyui|description
+#   in_all       yes = installed by `stock-setup.sh all` and by full provision runs
+#                no  = opt-in, installed only when asked for by name
+#   min_comfyui  lowest ComfyUI core version the workflow needs (empty = any recent)
+# Order matters: `all` installs top to bottom.
+qwen21|yes||Qwen-Image 2.1 text-to-image + Lenovo UltraReal LoRA
+qwen21-edit|yes||Qwen-Image 2.1 image edit, up to 10 reference images
+krea2|yes||Krea 2 text-to-image: realism/NSFW LoRA set, Dolphin3 prompt enhancement via Ollama
+edit-2509|yes||Qwen-Image-Edit 2509 multi-image edit, 4-step Lightning
+krea-style|yes||Krea 2 Turbo style reference (1-3 style images)
+wan-i2v|yes||Wan2.2 Remix/Painter uncensored image-to-video
+minimax-h3|yes|0.30.0|MiniMax H3 all-in-one: 7 modes + lip sync, native stereo audio
+wan-animate|yes||Wan2.2 Animate: driving-video motion transfer + Instareal realism LoRA
+global|yes||Shared extras: Z-Image Turbo checkpoint, general-purpose nodes, qwen3:8b
+flux|no||Flux.2 Klein 9B support files (base needs HF approval; workflows disabled)
