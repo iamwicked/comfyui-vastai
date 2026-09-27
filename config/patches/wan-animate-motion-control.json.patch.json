@@ -1,0 +1,13 @@
+{
+  "description": "nightfunnels.com 'Motion Control' graph -> v6 wan-animate. Removes the RunningHub-only RHHiddenNodes (an encrypted LoRA feed into prev_lora that cannot exist outside RunningHub) and swaps LoRA slot 5 from Wan2.2-Fun-InP HPS2.1 @ 0.5 to Instareal_low @ 1.0. The bundled config/workflows/wan-animate-motion-control.json already has this applied; re-applying is a no-op.",
+  "remove_nodes": [
+    {"node_type": "RHHiddenNodes"}
+  ],
+  "set_widgets": [
+    {"node_type": "WanVideoLoraSelectMulti", "node_id": 364, "index": 8,
+     "expect": "Wan2.2-Fun-A14B-InP-LOW-HPS2.1_resized_dynamic_avg_rank_15_bf16.safetensors",
+     "value": "Instareal_low.safetensors"},
+    {"node_type": "WanVideoLoraSelectMulti", "node_id": 364, "index": 9,
+     "expect": 0.5, "value": 1.0}
+  ]
+}

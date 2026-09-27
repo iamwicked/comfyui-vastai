@@ -1,15 +1,23 @@
-# Points ComfyUI at the persistent volume so models survive
-# destroy/recreate cycles. The image's own models/ dir stays empty.
+# managed by comfyui-vastai — points ComfyUI at the persistent volume so models
+# survive destroy/recreate cycles. Installed as <ComfyUI>/extra_model_paths.yaml
+# (golden image: at build time; stock template: by stock-setup.sh init).
+# ComfyUI reads this file once at startup, so restart it after changes.
 vastai:
   base_path: /workspace/models
+  audio_encoders: audio_encoders/
   checkpoints: checkpoints/
   clip: clip/
   clip_vision: clip_vision/
   configs: configs/
   controlnet: controlnet/
+  detection: detection/
   diffusion_models: diffusion_models/
   embeddings: embeddings/
-  text_encoders: text_encoders/
+  latent_upscale_models: latent_upscale_models/
   loras: loras/
+  model_patches: model_patches/
+  sams: sams/
+  text_encoders: text_encoders/
   upscale_models: upscale_models/
   vae: vae/
+  vae_approx: vae_approx/

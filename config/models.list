@@ -1,152 +1,163 @@
-# models.list — everything provision.sh downloads on first boot (skipped if present).
-# Format (pipe-delimited, NOT tabs/spaces):
-#   kind|filename|source|source_id|subdir(optional)|wf:workflow-ids(optional)
+# models.list — every file provision.sh downloads (skipped when already present).
+# Format (pipe-delimited, NOT tabs):
+#   kind|filename|source|source_id|subdir|wf:workflow-ids
 #
-# kind:   checkpoint | lora | vae | controlnet | upscale | embedding | clip
-#          | text_encoder | diffusion | workflow
-# source: hf      -> source_id is  repo_id::path/inside/repo   (path defaults to filename at repo root)
-#         civitai -> source_id is  the model VERSION id
-#         url     -> source_id is  the full download URL
-# wf:     comma-separated workflow id(s) that need this file, e.g. wf:qwen21,qwen21-edit.
-#         Files shared by several workflows list every id that needs them.
-#         Lines with NO wf: tag are "global" — fetched by full runs and by the
-#         `global` pseudo-workflow, but NOT by per-workflow installs.
-#         `bash scripts/provision.sh --list-workflows` (or install-workflow.sh --list)
-#         shows the workflow catalog.
+# kind     folder under /workspace/models (subdir overrides it):
+#            checkpoint lora vae vae_approx clip clip_vision text_encoder diffusion
+#            upscale embedding controlnet detection sams model_patch audio_encoder
+#            latent_upscale  (any other kind = a folder with the same name)
+#          workflow = a ComfyUI workflow (.json, or a .zip of .json files), installed
+#            into /workspace/comfyui-user/default/workflows
+# source   hf       repo_id::path/in/repo  (path defaults to filename; the local
+#                   filename may differ from the repo path, which renames it)
+#          civitai  model VERSION id (needs CIVITAI_TOKEN); version_id::member
+#                   extracts one file from a .zip release
+#          url      direct URL
+#          bundled  file inside config/ (e.g. workflows/x.json)
+# subdir   optional folder under models/ (e.g. loras/MINIMAX); empty = kind default
+# wf:      comma-separated workflow ids from catalog.txt. No tag = global.
+#          "wf:global,<id>" installs the line for both `global` and <id>.
 #
-# --- Civitai (YOUR custom models go here) ---
-# Find the VERSION id: open the model on civitai.com, pick a version, and look at
-# its download URL — it ends with /api/download/models/<VERSION_ID>. That number
-# is the source_id. Requires CIVITAI_TOKEN env var on the instance.
-# Examples (replace VERSION_ID with your own):
-# lora|my-favorite-style.safetensors|civitai|VERSION_ID|
-# lora|character-lora.safetensors|civitai|VERSION_ID|
-# checkpoint|my-merge.safetensors|civitai|VERSION_ID|
-# vae|my-vae.safetensors|civitai|VERSION_ID|
-#
-# --- HuggingFace examples (uncomment to use) ---
-# Gated repos (Flux, SDXL-Turbo...) need HF_TOKEN set and the license accepted on huggingface.co.
-# checkpoint|sd_xl_base_1.0.safetensors|hf|stabilityai/stable-diffusion-xl-base-1.0::sd_xl_base_1.0.safetensors|
-# checkpoint|flux1-dev.safetensors|hf|black-forest-labs/FLUX.1-dev::flux1-dev.safetensors|
-# vae|ae.safetensors|hf|black-forest-labs/FLUX.1-dev::ae.safetensors|
-# upscale|4x-UltraSharp.pth|url|https://huggingface.co/Kim2091/2x-AnimeSharpERSGAN-v1/resolve/main/4x-UltraSharp.pth|
+# A workflow with config/patches/<filename>.patch.json is patched after download.
+# Adding your own Civitai file: open the model, pick the version, copy the number
+# from its download URL (/api/download/models/<VERSION_ID>):
+#   lora|my-style.safetensors|civitai|VERSION_ID||wf:krea2
 
-# --- Aadi's Civitai picks (resolved 2026-09-24) ---
-# Requires CIVITAI_TOKEN env var on the instance.
-# 1. InstaPic UltraReal — style LoRA for Flux.2 Klein 9B (158 MB)
-#    NOTE 2026-09-24: the Klein 9B base itself is approval-gated (see base-weights
-#    section) and NOT downloaded. LoRA kept so the stack works if you source the
-#    base file manually.
-lora|V3_flux_klein.safetensors|civitai|2998522||wf:flux
-# 2. IntoRealism ZIT V9.0 — photorealism checkpoint, Z-Image Turbo, fp8 (6.0 GB)
-checkpoint|intorealism_zitV90.safetensors|civitai|3258780|
-# 3. Uncensored Wan 2.2 Remix — i2v WORKFLOW archive (8 KB zip)
-#    provision.sh extracts the .json into ComfyUI's user dir (workflows), idempotently.
-workflow|uncensoredWan22Remix_v10.zip|civitai|2415176||wf:wan-i2v
-# 5. Lenovo UltraReal — LoRA series, one version PER BASE MODEL
-#    (Qwen2.1 / Krea2 / Ideogram4 / Flux2 / Z-Image Turbo / Chroma / Wan / Flux.1).
-#    Krea 2 variant: added below as 5b, straight from the creator's HuggingFace.
-#    Qwen2.1 variant: added below as 5c (version ID 3349565, resolved 2026-09-24).
-# 6. AI Prompt Assistant Pro — Windows .exe desktop app, NOT a ComfyUI model.
-#    Runs on your own machine; can point at the Vast.ai Ollama (port 11434) as its backend.
+# ===== global (no tag) ================================================
+# IntoRealism ZIT V9.0: Z-Image Turbo photorealism checkpoint, fp8 (5.9 GB)
+checkpoint|intorealism_zitV90.safetensors|civitai|3258780||
 
-# --- Base weights the picks above NEED (verified 2026-09-24) ---
-# Flux.2 Klein 9B base — REMOVED 2026-09-24: black-forest-labs/FLUX.2-klein-9B
-# requires *APPROVAL* (not just a license click-through): hf download fails with
-# "Access denied. This repository requires approval."
-# The Qwen3-8B encoder + Flux2 VAE below are KEPT (ungated) so the stack works if
-# you source flux-2-klein-9b.safetensors manually — drop it into
-# models/diffusion_models/. Both Flux workflows stay out until the base exists.
-# To restore the base + workflows, un-comment:
-# diffusion|flux-2-klein-9b.safetensors|hf|black-forest-labs/FLUX.2-klein-9B::flux-2-klein-9b.safetensors||wf:flux
-# workflow|flux_2_klein_9b_text2image.json|url|https://raw.githubusercontent.com/nomadoor/comfy-with-comfyui/main/src/workflows/basic-workflows/flux-2-klein/9b/flux_2_klein_9b_text2image.json||wf:flux
-# workflow|image_flux2_klein_image_edit_9b_base.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_flux2_klein_image_edit_9b_base.json||wf:flux
-text_encoder|qwen_3_8b_fp8mixed.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors||wf:flux
-vae|flux2-vae.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/vae/flux2-vae.safetensors||wf:flux
-# Wan 2.2 i2v workflow -> Wan2.2-I2V-A14B (high-noise + low-noise DiT), UMT5 text
-# encoder, and the Wan 2.1 VAE (shared with Wan 2.2 in ComfyUI).
-diffusion|wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors||wf:wan-i2v
-diffusion|wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors||wf:wan-i2v
-text_encoder|umt5_xxl_fp8_e4m3fn_scaled.safetensors|hf|Comfy-Org/Wan_2.1_ComfyUI_repackaged::split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors||wf:wan-i2v
-vae|wan_2.1_vae.safetensors|hf|Comfy-Org/Wan_2.1_ComfyUI_repackaged::split_files/vae/wan_2.1_vae.safetensors||wf:wan-i2v
-# Moody Krea 2 Mix -> Krea 2 text encoder (Qwen3-VL 4B, CLIPLoader type "krea2")
-# and the Qwen Image VAE from the official Comfy-Org Krea-2 repack.
-text_encoder|qwen3vl_4b_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::text_encoders/qwen3vl_4b_fp8_scaled.safetensors||wf:krea2,krea-style
-vae|qwen_image_vae.safetensors|hf|Comfy-Org/Krea-2::vae/qwen_image_vae.safetensors||wf:krea2,krea-style,edit-2509
-# 5b. Lenovo UltraReal KREA 2 variant — from the creator's own HuggingFace
-#     (no Civitai token needed for this one).
-#     Creator's notes: strength 0.8 on Krea 2 Raw, 1.2-2.0 on Turbo;
-#     cfg 4 on Raw for best quality, cfg 1 + Turbo LoRA for fast results.
-#     Base (resolved 2026-09-24): the LoRA was trained on the undistilled Krea 2
-#     Raw base (safetensors header: krea2_raw_lora_v1, ss_base_model_version=krea2,
-#     ostris/ai-toolkit 0.10.18). Public Comfy-Org mirror below — the official
-#     krea/Krea-2-Raw repo is approval-gated, not needed.
-diffusion|krea2_raw_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_raw_fp8_scaled.safetensors||wf:krea2
-lora|lenovo_krea2_3000.safetensors|hf|Danrisi/Lenovo_Krea2::lenovo_krea2_3000.safetensors||wf:krea2
-# 5c. Lenovo UltraReal QWEN-IMAGE-2.1 variant — RESOLVED 2026-09-24.
-#     Version "v1.0 Qwen2.1" (Civitai version ID 3349565, published 2026-09-22),
-#     baseModel "Qwen 2". The series names every variant after its base model;
-#     the creator's Lenovo_Qwen HF repo is 11 months old (Qwen v1 era), so the
-#     2.1 LoRA lives only on Civitai.
-#     Base weights verified against the creator's own example workflow embedded
-#     in the Civitai version metadata — official Comfy-Org/Qwen-Image-2.1 repo,
-#     files at the REPO ROOT (no split_files/ prefix):
-#       diffusion  qwen_image_2.1_int8_convrot.safetensors  (~7 GB, creator's pick)
-#       text_enc   qwen3vl_8b_int8_convrot.safetensors      (CLIPLoader type "qwen_image")
-#       vae        qwen_image_2.1_vae_bf16.safetensors
-#     Creator's recommended settings: cfg 3-4 (drop to 1 if the image turns to
-#     slop), beta scheduler, res_2m / res_2s / res_multistep samplers
-#     (res_2s = best quality, res_multistep = fastest, res_2m = balanced).
-#     Their example used 50 steps, cfg 4, res_2s + beta, LoRA strength 0.7.
+# ===== qwen21 + qwen21-edit (Qwen-Image 2.1) ===========================
+# Official Comfy-Org 2.1 weights + Lenovo UltraReal "v1.0 Qwen2.1" LoRA (Civitai 3349565).
+# Creator settings: cfg 3-4 (1 if the image turns to slop), beta scheduler,
+# res_2s / res_2m / res_multistep (RES4LYF); example 50 steps, cfg 4, res_2s, LoRA 0.7.
 diffusion|qwen_image_2.1_int8_convrot.safetensors|hf|Comfy-Org/Qwen-Image-2.1::diffusion_models/qwen_image_2.1_int8_convrot.safetensors||wf:qwen21,qwen21-edit
 text_encoder|qwen3vl_8b_int8_convrot.safetensors|hf|Comfy-Org/Qwen-Image-2.1::text_encoders/qwen3vl_8b_int8_convrot.safetensors||wf:qwen21,qwen21-edit
 vae|qwen_image_2.1_vae_bf16.safetensors|hf|Comfy-Org/Qwen-Image-2.1::vae/qwen_image_2.1_vae_bf16.safetensors||wf:qwen21,qwen21-edit
-#     The LoRA itself (76 MB, fp16) — Civitai version 3349565.
 lora|lenovo_qwen21.safetensors|civitai|3349565||wf:qwen21,qwen21-edit
-# 8. Upscaler for the Wan2.2 Remix workflow's final "Video Upscale With Model" node
-#    (4x ESRGAN-type upscaler; ~67 MB).
-upscale|4x_foolhardy_Remacri.pth|hf|FacehugmanIII/4x_foolhardy_Remacri||wf:wan-i2v
-# 9. "Uncensored Wan2.2 Remix" NSFW-unlocked DiT pair + matching UMT5 text encoder,
-#    required by the AiVerse Wan2.2-Remix painter-I2V workflow. Located 2026-09-24
-#    (the umt5 repo is gated "not for all audiences" — needs HF_TOKEN on download).
-diffusion|Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors|hf|FX-FeiHou/wan2.2-Remix::NSFW/Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors||wf:wan-i2v
-diffusion|Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors|hf|limiao1666/qw_nsfw||wf:wan-i2v
-text_encoder|nsfw_wan_umt5-xxl_fp8_scaled.safetensors|hf|Osrivers/nsfw_wan_umt5-xxl_fp8_scaled.safetensors||wf:wan-i2v
-# 10. Example workflows for the remaining model stacks (plain JSONs, direct URL).
-#     Qwen-Image 2.1: insert LoraLoaderModelOnly (lenovo_qwen21.safetensors @ 0.7)
-#       after UNETLoader; KSampler 50 steps / cfg 4 / res_2s / beta
-#       (res_2s needs the RES4LYF nodes, see config/nodes.txt).
-#     Krea 2: fully native nodes; set lora_name -> lenovo_krea2_3000.safetensors
-#       @ 0.8, unet_name -> krea2_raw_fp8_scaled.safetensors, ~52 steps / cfg 3.5-4.
-#       (Turbo defaults 8 steps / cfg 1 also work with the LoRA at 1.2-2.0.)
-workflow|image_qwen_image_2_1_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_t2i.json||wf:qwen21
-workflow|image_krea2_turbo_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_krea2_turbo_t2i.json||wf:krea2
-# 11. Image-to-image / reference-image workflows (added 2026-09-24).
-#     a) image_qwen_image_2_1_image_edit.json — Qwen-Image 2.1 native edit.
-#        Up to 10 reference images: image_1 is the edit TARGET, the rest are
-#        references (mention as <img>1</img>, <img>2</img> ... in the prompt).
-#        Uses the exact 2.1 base/encoder/VAE already downloaded above —
-#        NO new models needed. 25 steps / euler / cfg 1.
-#     b) image_qwen_image_edit_2509.json — dedicated multi-image edit model
-#        (image + optional image2/image3). Needs the 2509 edit base + Qwen2.5-VL
-#        7B encoder + Lightning 4-step LoRA (added below). Turbo mode is ON by
-#        default: 4 steps / cfg 1. Toggle "Enable Lightning LoRA" off for the
-#        20-step / cfg 2.5 quality path.
-#     c) image_krea2_turbo_int8_image_style_reference.json — Krea 2 style
-#        reference: generates a NEW image in the style of 1-3 reference images
-#        (not an edit of them). Needs krea2_turbo_int8 base + style LoRA (added
-#        below); encoder/VAE already present from 5b. prompt_enhance off default.
-#     New models required for (b) and (c) only:
-#       2509 edit base (fp8, ~20 GB) + Qwen2.5-VL 7B encoder (fp8, ~7 GB)
-#       + Lightning LoRA (from lightx2v/Qwen-Image-Lightning, exact URL taken
-#       from the workflow template's node metadata).
+# Official templates PINNED to 371a7b7 (2026-09-20), the revision these weights match.
+# Later revisions (99e3d43, 2026-09-25) add a 9.5 GB Qwen3.5-9B prompt-enhancer
+# encoder to each template; REFERENCE.md explains how to opt in.
+workflow|image_qwen_image_2_1_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json||wf:qwen21
+workflow|image_qwen_image_2_1_image_edit.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json||wf:qwen21-edit
+
+# ===== krea2 (Krea 2 text-to-image) =====================================
+# Shared Krea 2 encoder (CLIPLoader type "krea2") and Qwen-Image VAE.
+text_encoder|qwen3vl_4b_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::text_encoders/qwen3vl_4b_fp8_scaled.safetensors||wf:krea2,krea-style
+vae|qwen_image_vae.safetensors|hf|Comfy-Org/Krea-2::vae/qwen_image_vae.safetensors||wf:krea2,krea-style,edit-2509
+# Krea 2 Turbo (distilled, 8-10 steps / cfg 1): the base both krea2 workflows load.
+diffusion|krea2_turbo_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_turbo_fp8_scaled.safetensors||wf:krea2
+# Krea 2 Raw (undistilled): the base Lenovo UltraReal was trained on (0.8, cfg 4, ~52 steps).
+diffusion|krea2_raw_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_raw_fp8_scaled.safetensors||wf:krea2
+# Realism / NSFW LoRA set:
+#   Lenovo UltraReal Krea 2 (creator's HF): 0.8 on Raw, 1.2-2.0 on Turbo
+lora|lenovo_krea2_3000.safetensors|hf|Danrisi/Lenovo_Krea2::lenovo_krea2_3000.safetensors||wf:krea2
+#   "0x7 - NSFW+ Krea2" (Civitai 3084588, 763 MB). The NSFW LLM workflow loads it as
+#   Krea2/Krea2 NSFW+.safetensors @ 0.85, hence the subfolder.
+lora|Krea2 NSFW+.safetensors|civitai|3084588|loras/Krea2|wf:krea2
+#   darkbrush style LoRA used by the official turbo template's optional LoRA node
+lora|krea2_darkbrush.safetensors|hf|Comfy-Org/Krea-2::loras/krea2_darkbrush.safetensors||wf:krea2
+# Workflows:
+#   Simple Krea2 NSFW+ LLM (Civitai model 2745139, version 3087685). Login-gated, so
+#   fetched on-instance. Patched after download so its Advanced Prompt Enhancer uses
+#   the local Ollama (dolphin3:8b): config/patches/simpleKrea2NSFWLLM_v10.json.patch.json
+workflow|simpleKrea2NSFWLLM_v10.json|civitai|3087685||wf:krea2
+#   Official Krea 2 Turbo t2i template (pinned)
+workflow|image_krea2_turbo_t2i.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/98fd32ca756dd9d72077fbe3457146d11cbc88cb/templates/image_krea2_turbo_t2i.json||wf:krea2
+
+# ===== edit-2509 (Qwen-Image-Edit 2509) ==================================
+# image + optional image2/image3. Lightning LoRA ON by default: 4 steps / cfg 1.
+# Toggle "Enable Lightning LoRA" off for 20 steps / cfg 2.5. Uses qwen_image_vae (above).
 diffusion|qwen_image_edit_2509_fp8_e4m3fn.safetensors|hf|Comfy-Org/Qwen-Image-Edit_ComfyUI::split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors||wf:edit-2509
 text_encoder|qwen_2.5_vl_7b_fp8_scaled.safetensors|hf|Comfy-Org/Qwen-Image_ComfyUI::split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors||wf:edit-2509
 lora|Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors|hf|lightx2v/Qwen-Image-Lightning::Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors||wf:edit-2509
-#       Krea 2 Turbo int8 base + official style-reference LoRA (both from the
-#       official Comfy-Org/Krea-2 repack; exact URLs from the template's nodes).
+workflow|image_qwen_image_edit_2509.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/98fd32ca756dd9d72077fbe3457146d11cbc88cb/templates/image_qwen_image_edit_2509.json||wf:edit-2509
+
+# ===== krea-style (Krea 2 Turbo style reference) =========================
+# Generates a NEW image in the style of 1-3 reference images. Uses the krea2 encoder + VAE.
 diffusion|krea2_turbo_int8_convrot.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_turbo_int8_convrot.safetensors||wf:krea-style
 lora|krea2_style_reference.safetensors|hf|Comfy-Org/Krea-2::loras/krea2_style_reference.safetensors||wf:krea-style
-workflow|image_qwen_image_2_1_image_edit.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_image_edit.json||wf:qwen21-edit
-workflow|image_qwen_image_edit_2509.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_edit_2509.json||wf:edit-2509
-workflow|image_krea2_turbo_int8_image_style_reference.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_krea2_turbo_int8_image_style_reference.json||wf:krea-style
+workflow|image_krea2_turbo_int8_image_style_reference.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/98fd32ca756dd9d72077fbe3457146d11cbc88cb/templates/image_krea2_turbo_int8_image_style_reference.json||wf:krea-style
+
+# ===== wan-i2v (Wan2.2 Remix painter image-to-video) =====================
+# Graph: "Uncensored Wan 2.2 Remix + painter i2v" (Civitai 2415176, zip, extracted).
+# Working wiring: high loader -> Remix high, low loader -> Remix low,
+# CLIP -> nsfw_wan_umt5, VAE -> wan_2.1_vae, "Video Upscale With Model" -> Remacri.
+workflow|uncensoredWan22Remix_v10.zip|civitai|2415176||wf:wan-i2v
+diffusion|Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors|hf|FX-FeiHou/wan2.2-Remix::NSFW/Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors||wf:wan-i2v
+# Low-noise half from the original author's repo (byte-identical to the old limiao1666 mirror).
+diffusion|Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors|hf|FX-FeiHou/wan2.2-Remix::NSFW/Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors||wf:wan-i2v
+# NSFW UMT5 (repo is flagged "not for all audiences": needs HF_TOKEN).
+text_encoder|nsfw_wan_umt5-xxl_fp8_scaled.safetensors|hf|Osrivers/nsfw_wan_umt5-xxl_fp8_scaled.safetensors||wf:wan-i2v
+vae|wan_2.1_vae.safetensors|hf|Comfy-Org/Wan_2.1_ComfyUI_repackaged::split_files/vae/wan_2.1_vae.safetensors||wf:wan-i2v
+upscale|4x_foolhardy_Remacri.pth|hf|FacehugmanIII/4x_foolhardy_Remacri||wf:wan-i2v
+# Stock Wan2.2 I2V A14B pair + stock UMT5 (35.3 GB). The Remix wiring above does not
+# load them; kept until checked against the Remix graph (open decision, REFERENCE.md).
+diffusion|wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors||wf:wan-i2v
+diffusion|wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors|hf|Comfy-Org/Wan_2.2_ComfyUI_Repackaged::split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors||wf:wan-i2v
+text_encoder|umt5_xxl_fp8_e4m3fn_scaled.safetensors|hf|Comfy-Org/Wan_2.1_ComfyUI_repackaged::split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors||wf:wan-i2v
+
+# ===== minimax-h3 (MiniMax H3 / Hailuo 3.0 all-in-one) ===================
+# Graph: "MiniMax H3 All-in-One Workflow" by Alice_AIisinWonderland, Civitai model
+# 2913151, EN version 3295505 (3295435 = the identical graph with Japanese notes).
+# Login-gated: fetched on-instance with CIVITAI_TOKEN, never committed. Needs ComfyUI
+# >= 0.30.0. Modes 01-03 (T2V / I2V / first-last frame) run on the FL2VA UNet;
+# 04-07 (reference-to-video + DWPose / DensePose / SCAIL-NLF motion tracking) on REF2VA.
+# Never recolour the graph's groups: its panels find their groups by colour.
+workflow|minimaxH3AllInOneWorkflowEN_enV10.json|civitai|3295505||wf:minimax-h3
+# Weights: official Comfy-Org repack, the same variants Comfy-Org's own H3 templates use.
+diffusion|minimax_h3_fl2va_pruned_int8_convrot.safetensors|hf|Comfy-Org/MiniMax-H3::diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors||wf:minimax-h3
+diffusion|minimax_h3_ref2va_pruned_int8_convrot.safetensors|hf|Comfy-Org/MiniMax-H3::diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors||wf:minimax-h3
+text_encoder|qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors|hf|Comfy-Org/MiniMax-H3::text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors||wf:minimax-h3
+vae|minimax_h3_video_vae_int8_convrot.safetensors|hf|Comfy-Org/MiniMax-H3::vae/minimax_h3_video_vae_int8_convrot.safetensors||wf:minimax-h3
+vae|minimax_h3_audio_vae_fp32.safetensors|hf|Comfy-Org/MiniMax-H3::vae/minimax_h3_audio_vae_fp32.safetensors||wf:minimax-h3
+# Turbo 8-step LoRA, ON by default in the graph (8 steps, ~6x faster than 20), loaded
+# from loras/MINIMAX/. This is the official file under the exact name the graph expects
+# (identical to lightx2v's), so no rename is needed.
+lora|minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors|hf|Comfy-Org/MiniMax-H3::loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors|loras/MINIMAX|wf:minimax-h3
+# taeh3 tiny preview decoder: the graph's live-preview node is on by default.
+vae_approx|taeh3.safetensors|hf|Kijai/MiniMax-H3-TAE::vae_approx/taeh3.safetensors||wf:minimax-h3
+
+# ===== wan-animate (Wan2.2 Animate motion transfer) ======================
+# Graph: nightfunnels.com "Motion Control" (unofficial port of RunningHub workflow
+# 2042741071045726210), bundled as config/workflows/wan-animate-motion-control.json.
+# Changes vs the download (config/patches/wan-animate-motion-control.json.patch.json):
+#   - RunningHub-only RHHiddenNodes removed (the node only exists on RunningHub)
+#   - LoRA slot 5: Wan2.2-Fun-InP HPS2.1 @ 0.5 -> Instareal_low @ 1.0 (photorealism;
+#     if results look harsh or oversharpened, lower it toward 0.8 first)
+workflow|wan-animate-motion-control.json|bundled|workflows/wan-animate-motion-control.json||wf:wan-animate
+diffusion|Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors|hf|Kijai/WanVideo_comfy_fp8_scaled::Wan22Animate/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors|diffusion_models/Wan22Animate|wf:wan-animate
+text_encoder|umt5-xxl-enc-bf16.safetensors|hf|Kijai/WanVideo_comfy::umt5-xxl-enc-bf16.safetensors||wf:wan-animate
+vae|Wan2_1_VAE_bf16.safetensors|hf|Kijai/WanVideo_comfy::Wan2_1_VAE_bf16.safetensors||wf:wan-animate
+clip_vision|clip_vision_h.safetensors|hf|Comfy-Org/Wan_2.1_ComfyUI_repackaged::split_files/clip_vision/clip_vision_h.safetensors||wf:wan-animate
+# LoRA stack as wired in the graph's WanVideoLoraSelectMulti node:
+lora|WanAnimate_relight_lora_fp16.safetensors|hf|Kijai/WanVideo_comfy::LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors||wf:wan-animate
+lora|Wan2.2-Lightning_I2V-A14B-4steps-lora_LOW_fp16.safetensors|hf|Kijai/WanVideo_comfy::LoRAs/Wan22-Lightning/old/Wan2.2-Lightning_I2V-A14B-4steps-lora_LOW_fp16.safetensors||wf:wan-animate
+lora|FastWan_T2V_14B_480p_lora_rank_128_bf16.safetensors|hf|Kijai/WanVideo_comfy::FastWan/FastWan_T2V_14B_480p_lora_rank_128_bf16.safetensors||wf:wan-animate
+lora|Wan21_PusaV1_LoRA_14B_rank512_bf16.safetensors|hf|Kijai/WanVideo_comfy::Pusa/Wan21_PusaV1_LoRA_14B_rank512_bf16.safetensors||wf:wan-animate
+# Instareal WAN 2.2 (Civitai model 1877171, version 2124694) ships as a .zip with the
+# high/low pair; the graph uses only the low-noise LoRA.
+lora|Instareal_low.safetensors|civitai|2124694::Instareal_low.safetensors||wf:wan-animate
+# Pose + face detection (ComfyUI-WanAnimatePreprocess reads models/detection).
+# The ViTPose-H ONNX comes in two files that must sit in the same folder.
+detection|vitpose_h_wholebody_model.onnx|hf|Kijai/vitpose_comfy::onnx/vitpose_h_wholebody_model.onnx||wf:wan-animate
+detection|vitpose_h_wholebody_data.bin|hf|Kijai/vitpose_comfy::onnx/vitpose_h_wholebody_data.bin||wf:wan-animate
+detection|yolov10m.onnx|hf|Wan-AI/Wan2.2-Animate-14B::process_checkpoint/det/yolov10m.onnx||wf:wan-animate
+# SeC-4B segmentation (Comfyui-SecNodes reads models/sams). fp8 kept for parity with
+# the uploaded graph; current SecNodes upcasts fp8 to fp16 at load. If segmentation
+# fails, un-comment fp16 (7.9 GB), re-run, and pick it in the SeC Model Loader.
+sams|SeC-4B-fp8.safetensors|hf|VeryAladeen/Sec-4B::SeC-4B-fp8.safetensors||wf:wan-animate
+# sams|SeC-4B-fp16.safetensors|hf|VeryAladeen/Sec-4B::SeC-4B-fp16.safetensors||wf:wan-animate
+
+# ===== flux (opt-in: not in `all`) ======================================
+# black-forest-labs/FLUX.2-klein-9B requires APPROVAL, not just a click-through
+# (hf download: "Access denied. This repository requires approval."). The encoder,
+# VAE and InstaPic LoRA are kept so the stack works once you drop
+# flux-2-klein-9b.safetensors into models/diffusion_models/. Base + workflows:
+# diffusion|flux-2-klein-9b.safetensors|hf|black-forest-labs/FLUX.2-klein-9B::flux-2-klein-9b.safetensors||wf:flux
+# workflow|flux_2_klein_9b_text2image.json|url|https://raw.githubusercontent.com/nomadoor/comfy-with-comfyui/main/src/workflows/basic-workflows/flux-2-klein/9b/flux_2_klein_9b_text2image.json||wf:flux
+# workflow|image_flux2_klein_image_edit_9b_base.json|url|https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_flux2_klein_image_edit_9b_base.json||wf:flux
+# InstaPic UltraReal: style LoRA for Flux.2 Klein 9B (Civitai 2998522, 158 MB)
+lora|V3_flux_klein.safetensors|civitai|2998522||wf:flux
+text_encoder|qwen_3_8b_fp8mixed.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors||wf:flux
+vae|flux2-vae.safetensors|hf|Comfy-Org/vae-text-encorder-for-flux-klein-9b::split_files/vae/flux2-vae.safetensors||wf:flux

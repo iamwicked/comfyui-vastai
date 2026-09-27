@@ -1,0 +1,11 @@
+{
+  "description": "Simple Krea2 NSFW+ LLM (Civitai 3087685): point the Plush Advanced Prompt Enhancer at the local Ollama server with dolphin3:8b instead of an OpenAI-compatible server on 127.0.0.1:8080. Widget order (Plush AdvPromptEnhancer): 0 AI_service, 5 Ollama_model, 13 LLM_URL. 'Boolean (Refine Prompt?)' is ON by default in this graph, so Ollama must be running with dolphin3:8b pulled before ComfyUI starts (install-workflow.sh krea2 and finish take care of it).",
+  "set_widgets": [
+    {"node_type": "AdvPromptEnhancer", "index": 0,
+     "expect": "OpenAI API Connection (URL)", "value": "Ollama (URL)"},
+    {"node_type": "AdvPromptEnhancer", "index": 5,
+     "expect": "none", "value": "dolphin3:8b"},
+    {"node_type": "AdvPromptEnhancer", "index": 13,
+     "expect": "http://127.0.0.1:8080", "value": "http://127.0.0.1:11434/v1"}
+  ]
+}

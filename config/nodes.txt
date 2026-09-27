@@ -1,25 +1,41 @@
-# nodes.txt — custom nodes installed by provision.sh.
-# One per line:  git_url|optional_ref|wf:workflow-ids(optional)
-# ref = branch or tag to pin (empty = default branch). Repos already present are
-# git-pulled on each boot, so this doubles as your update mechanism.
-# wf: = only installed for these workflows (same ids as models.list).
-#     Entries with no wf: tag are global — installed by full runs, skipped by
-#     per-workflow installs.
-# (ComfyUI-Manager is baked into the image already — don't list it here.)
+# nodes.txt — custom nodes installed by provision.sh (git clone, then git pull on
+# every later run: that is the update mechanism).
+# Format:  git_url|optional_ref|wf:workflow-ids
+#   ref  branch or tag to clone (empty = default branch)
+#   wf:  workflows that need the pack (ids from catalog.txt). No tag = global.
+#        "wf:global,<ids>" installs it for `global`/finish AND for each listed id,
+#        so every per-workflow install is complete on its own.
+# Requirements are installed with a constraint that keeps the running torch build.
+# ComfyUI-Manager ships with the stock template and the golden image: not listed.
 
-https://github.com/cubiq/ComfyUI_essentials|
-https://github.com/rgthree/rgthree-comfy|
-https://github.com/kijai/ComfyUI-KJNodes|
+# --- general-purpose (global, plus the workflows that load them) ---
+https://github.com/cubiq/ComfyUI_essentials||wf:global,wan-animate
+https://github.com/rgthree/rgthree-comfy||wf:global,minimax-h3
+https://github.com/kijai/ComfyUI-KJNodes||wf:global,minimax-h3,wan-animate
 https://github.com/Fannovel16/comfyui_controlnet_aux|
 https://github.com/pythongosssss/ComfyUI-Custom-Scripts|
 https://github.com/city96/ComfyUI-GGUF|
-# Video packs required by the Wan2.2 Remix workflow (added 2026-09-24)
-https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite||wf:wan-i2v
+# LLM prompt expansion via the local Ollama (OllamaGenerate -> CLIP Text Encode)
+https://github.com/stavsap/comfyui-ollama|
+
+# --- video ---
+https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite||wf:wan-i2v,minimax-h3,wan-animate
 https://github.com/princepainter/ComfyUI-PainterI2V||wf:wan-i2v
 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation||wf:wan-i2v
-# LLM prompt expansion via local Ollama (OllamaGenerate -> CLIP Text Encode)
-https://github.com/stavsap/comfyui-ollama|
-# res_2s / res_2m samplers required by the Qwen-Image 2.1 workflow (not in core)
+
+# --- qwen21: res_2s / res_2m samplers (not in core) ---
 https://github.com/ClownsharkBatwing/RES4LYF||wf:qwen21,qwen21-edit
-# Add your own below, e.g.:
-# https://github.com/owner/some-node|v1.2.3
+
+# --- krea2: Advanced Prompt Enhancer (talks to Ollama at 127.0.0.1:11434) ---
+https://github.com/glibsonoran/Plush-for-ComfyUI||wf:krea2
+
+# --- minimax-h3 (the graph also needs rgthree, KJNodes, VideoHelperSuite above) ---
+https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI||wf:minimax-h3
+
+# --- wan-animate (plus essentials, KJNodes, VideoHelperSuite above) ---
+https://github.com/kijai/ComfyUI-WanVideoWrapper||wf:wan-animate
+https://github.com/kijai/ComfyUI-WanAnimatePreprocess||wf:wan-animate
+https://github.com/9nate-drake/Comfyui-SecNodes||wf:wan-animate
+https://github.com/chflame163/ComfyUI_LayerStyle||wf:wan-animate
+https://github.com/M1kep/ComfyLiterals||wf:wan-animate
+https://github.com/evanspearman/ComfyMath||wf:wan-animate

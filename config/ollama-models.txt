@@ -1,12 +1,13 @@
-# ollama-models.txt — LLM models pulled into /workspace/ollama-models on first boot.
-# Skipped if already present. With an 80GB card you can comfortably run 32B-class
-# models alongside ComfyUI; 70B quants also fit if you unload during big image gens.
-# See https://ollama.com/library for the full catalog.
+# ollama-models.txt — LLMs pulled into /workspace/ollama-models (skipped if present).
+# Format:  model[:tag]|wf:workflow-ids     (no tag = global, pulled by `finish`)
+# Ollama listens on 127.0.0.1:11434 only; ComfyUI nodes reach it locally.
+# Catalog: https://ollama.com/library
 
+# General prompt expansion (comfyui-ollama OllamaGenerate). Append /nothink to skip Qwen3 reasoning.
 qwen3:8b
+# Uncensored prompt enhancer for krea2's NSFW LLM workflow (Plush Advanced Prompt Enhancer)
+dolphin3:8b|wf:krea2
 
-# Uncomment more as needed:
+# More, if you want them:
 # qwen3:32b
-# llama3.1:8b
 # deepseek-r1:14b
-# qwen3:70b-instruct-2507-q4_K_M
