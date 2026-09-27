@@ -34,8 +34,15 @@ comfy_program() {
   prog="$(awk 'tolower($1) == "comfyui" {print $1; exit}' <<< "$out")"
   [ -n "$prog" ] && printf '%s\n' "$prog"
 }
+PROVISIONING_MARKER="${PROVISIONING_MARKER:-/.provisioning}"
 comfy_ctl() { # $1: stop|start|restart
   local prog
+  # During Vast's first-boot provisioning the template holds ComfyUI back until
+  # provisioning finishes, so there is nothing to stop or restart yet.
+  if [ -f "$PROVISIONING_MARKER" ]; then
+    say "Vast provisioning in progress: ComfyUI starts by itself when it finishes (skipping $1)"
+    return 0
+  fi
   if prog="$(comfy_program)"; then
     say "supervisorctl $1 $prog"
     supervisorctl "$1" "$prog" || warn "supervisorctl $1 $prog failed"
