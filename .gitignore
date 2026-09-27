@@ -1,3 +1,12 @@
 .DS_Store
 *.log
 __pycache__/
+# never commit credentials or transfer artifacts
+.env
+.env.*
+.vastai-tokens
+*.bundle
+# provisioning state if the repo is used as WORKSPACE for testing
+.staging/
+.provision/
+*.part

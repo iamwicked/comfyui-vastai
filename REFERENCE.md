@@ -1,287 +1,344 @@
-# comfyui-vastai — Reference
+# comfyui-vastai — Reference (v6)
 
-Reproducible **ComfyUI + Ollama** setup on a stock Vast.ai instance: a golden
-Docker image, an idempotent provisioning script, and persistent volumes, so
-every session boots in ~1 minute with all models, nodes, and workflows intact.
+Aadi's reproducible ComfyUI + Ollama workstation on Vast.ai. Idempotent scripts turn a
+**stock Vast.ai ComfyUI template** instance into the full setup: one command installs
+everything one workflow needs (models, LoRAs, custom nodes, Ollama models, workflow
+JSON). Built for one 80 GB GPU (A100 / H100 class).
 
-Repo: `https://github.com/iamwicked/comfyui-vastai` · Image:
-`ghcr.io/iamwicked/comfyui-vastai:latest` (built by GitHub Actions on push to
-`main`).
+Repo: `https://github.com/iamwicked/comfyui-vastai` · Changes per version: `CHANGELOG.md`
 
----
+## 1. Layout
 
-## 1. How it works
-
-| Piece | Role |
+| Path | Role |
 |---|---|
-| `Dockerfile` | Golden image: CUDA 12.8, PyTorch cu128, ComfyUI, ComfyUI-Manager, Ollama, rclone, sshd |
-| `scripts/provision.sh` | Idempotent setup: updates custom nodes, downloads every entry in `config/models.list` (skips files already present), pulls Ollama models. Safe to re-run anytime. |
-| `scripts/entrypoint.sh` | Boot sequence: SSH setup → persistent layout → provision → start |
-| `scripts/start.sh` | Launches Ollama on `:11434`, then ComfyUI on `:8188` |
-| `scripts/save-progress.sh` | End-of-session: git-push workflows, rclone-sync outputs |
-| `config/models.list` | The manifest: `kind|filename|source|source_id|subdir`. The single source of truth for every model + workflow |
-| `config/nodes.txt` | Custom-node git URLs installed by `provision.sh` |
-| `config/ollama-models.txt` | LLM models to `ollama pull` |
-| `extra_model_paths.yaml` | Points ComfyUI at `/workspace/models` (the volume) |
-| `vastai/template.md` | Exact Vast.ai template fields + volume/CLI reference |
+| `config/catalog.txt` | Workflow ids, whether each is in `all`, minimum ComfyUI version |
+| `config/models.list` | Every downloadable file (models, LoRAs, workflow JSONs) with `wf:` tags |
+| `config/nodes.txt` | Custom node git repos with `wf:` tags |
+| `config/ollama-models.txt` | Ollama LLMs with `wf:` tags |
+| `config/workflows/` | Bundled workflow JSONs (login-gated ones are fetched on-instance instead) |
+| `config/patches/` | Small, idempotent edits applied to a workflow JSON after download |
+| `scripts/stock-setup.sh` | Fresh-instance entrypoint: `init`, `<id>`, `finish`, `all`, `status`, `restart`, `list` |
+| `scripts/install-workflow.sh` | One command per workflow (what `stock-setup.sh <id>` runs) |
+| `scripts/provision.sh` | The engine: nodes, models, Ollama models; `--status`, `--list-workflows` |
+| `scripts/common.sh` | Shared helpers (supervisor, model paths, user dir, Ollama service) |
+| `scripts/patch-workflow.py` | Applies `config/patches/*.patch.json` |
+| `extra_model_paths.yaml` | Points ComfyUI at `/workspace/models` |
+| `Dockerfile`, `scripts/entrypoint.sh`, `scripts/start.sh`, `vastai/` | Golden image (alternative path, §8) |
+| `scripts/save-progress.sh` | Optional off-box backup (git for workflows, rclone for outputs) |
 
-### Persistence model
+Instance paths (stock template): ComfyUI `/workspace/ComfyUI` on **port 18188** behind
+Vast's proxy (the Open button), python `/venv/main/bin/python`, repo
+`/workspace/comfyui-vastai`, models `/workspace/models`, user dir
+`/workspace/comfyui-user` (linked as `ComfyUI/user`), workflows
+`/workspace/comfyui-user/default/workflows`, Ollama weights `/workspace/ollama-models`.
+The template runs ComfyUI under supervisor; the scripts restart that process and
+never start a second server.
 
-| Thing | Where it lives | Survives destroy? |
+## 2. Fresh stock-template instance (runbook)
+
+Rent Vast's stock **ComfyUI** template on a single 80 GB GPU. Give it enough disk for
+the workflows you want (§7) plus about 50 GB of headroom.
+
+**Terminal 1** (Jupyter → Terminal). The token prompts keep the values out of shell
+history; paste each token when asked:
+
+```bash
+read -rsp "HF token: " HF_TOKEN; echo; read -rsp "Civitai token: " CIVITAI_TOKEN; echo; export HF_TOKEN CIVITAI_TOKEN
+[ -d /workspace/comfyui-vastai/.git ] || git clone --progress https://github.com/iamwicked/comfyui-vastai.git /workspace/comfyui-vastai
+bash /workspace/comfyui-vastai/scripts/stock-setup.sh init
+```
+
+`init` installs missing tools (hf CLI, zstd, unzip, wget), installs
+`extra_model_paths.yaml`, links the user dir, installs Ollama and registers it with
+supervisor on 127.0.0.1, then restarts ComfyUI. It warns when ComfyUI core is older
+than a workflow needs; `UPDATE_COMFYUI=1 bash .../stock-setup.sh init` updates core.
+
+**One terminal per workflow**, in parallel if you like (export the tokens in each):
+
+```bash
+read -rsp "HF token: " HF_TOKEN; echo; read -rsp "Civitai token: " CIVITAI_TOKEN; echo; export HF_TOKEN CIVITAI_TOKEN
+bash /workspace/comfyui-vastai/scripts/stock-setup.sh wan-animate
+```
+
+```bash
+read -rsp "HF token: " HF_TOKEN; echo; read -rsp "Civitai token: " CIVITAI_TOKEN; echo; export HF_TOKEN CIVITAI_TOKEN
+bash /workspace/comfyui-vastai/scripts/stock-setup.sh krea2
+```
+
+**Once, when the installs are done** (any terminal):
+
+```bash
+bash /workspace/comfyui-vastai/scripts/stock-setup.sh finish
+```
+
+`finish` installs the global nodes and Ollama models, restarts ComfyUI, and prints a
+per-workflow status. Open ComfyUI with the instance's Open button and hard-refresh the
+tab; the workflows are under Workflows (top-left menu).
+
+Useful anytime:
+
+```bash
+bash /workspace/comfyui-vastai/scripts/stock-setup.sh status        # what's installed / missing
+bash /workspace/comfyui-vastai/scripts/stock-setup.sh restart       # restart ComfyUI
+bash /workspace/comfyui-vastai/scripts/stock-setup.sh all           # everything in `all`, one terminal (~290 GB)
+```
+
+Everything is idempotent: re-running a command skips finished files, resumes
+interrupted downloads, and waits for another terminal that is fetching the same file.
+A command that hit problems lists them and exits non-zero; fix the cause (usually a
+token or a licence to accept) and run the same command again.
+
+## 3. Workflow catalog
+
+`bash scripts/stock-setup.sh <id>`. Sizes are downloads, verified 2026-09-28
+(shared files count once per workflow).
+
+| id | What it is | GB |
 |---|---|---|
-| ComfyUI app, torch, node code | Docker image | yes (immutable) |
-| Models, Ollama weights | `/workspace` volume | yes (if volume re-linked) |
-| Workflows, settings (`user/`) | `/workspace/comfyui-user` (symlinked into ComfyUI) | yes |
-| Generated images | `/workspace/output` (symlinked) | yes |
-| Off-box backup | your repo / cloud via `save-progress.sh` | yes |
+| `qwen21` | Qwen-Image 2.1 text-to-image + Lenovo UltraReal LoRA | 17.4 |
+| `qwen21-edit` | Qwen-Image 2.1 image edit, up to 10 reference images (same weights as qwen21) | 17.4 |
+| `krea2` | Krea 2 text-to-image: realism/NSFW LoRA set, Dolphin3 prompt enhancement via Ollama | 33.2 + 4.9 (dolphin3) |
+| `edit-2509` | Qwen-Image-Edit 2509 multi-image edit, 4-step Lightning | 30.9 |
+| `krea-style` | Krea 2 Turbo style reference (1-3 style images) | 19.4 |
+| `wan-i2v` | Wan2.2 Remix/Painter uncensored image-to-video | 71.0 |
+| `minimax-h3` | MiniMax H3 (Hailuo 3.0) all-in-one: 7 modes + lip sync, native stereo audio | 63.0 |
+| `wan-animate` | Wan2.2 Animate driving-video motion transfer + Instareal realism LoRA | 46.4 |
+| `global` | Shared extras: Z-Image Turbo checkpoint, general nodes, `qwen3:8b` | 6.2 + 5.2 |
+| `flux` | Opt-in Flux.2 Klein 9B support files (not in `all`; base needs HF approval) | 9.2 |
 
-**Short break:** just STOP the instance (container comes back whole).
-**Long break:** DESTROY, then re-rent the *same machine* and link the existing
-volume. `provision.sh` is the reinstall path for a fresh volume.
+`all` = `qwen21 qwen21-edit krea2 edit-2509 krea-style wan-i2v minimax-h3 wan-animate global`:
+**281.7 GB** of files plus about 10 GB of Ollama models.
 
-### Credentials policy
+## 4. Workflow notes
 
-- Tokens (`HF_TOKEN`, `CIVITAI_TOKEN`) are passed as **env vars on the instance**,
-  never baked into the image or committed to the repo.
-- Raw tokens are never stored in chat logs, memory files, or the repo.
-- Local helper file `/workspace/.vastai-tokens` on the instance holds them
-  during setup — delete it (`rm /workspace/.vastai-tokens`) only after every
-  required download has finished.
+### qwen21 / qwen21-edit
+- Templates: `image_qwen_image_2_1_t2i.json`, `image_qwen_image_2_1_image_edit.json`,
+  pinned to Comfy-Org revision `371a7b7`.
+- Lenovo LoRA: insert `LoraLoaderModelOnly` (`lenovo_qwen21.safetensors` @ 0.7) after
+  the UNETLoader. Creator settings: 50 steps, cfg 4 (1 if the image turns to slop),
+  `res_2s` + beta (RES4LYF installs with these workflows).
+- Edit: `image_1` is the edit target, the rest are references; mention them as
+  `<img>1</img>`, `<img>2</img>` in the prompt. 25 steps, euler, cfg 1.
+- Prompt enhancer (opt-in): the 2026-09-25 template revision adds a Qwen3.5-9B encoder.
+  To use it, change both template URLs in `models.list` from `371a7b7…` to `99e3d43745926b78466d99f937c0cd2bb622423a`,
+  add `text_encoder|qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors|hf|Comfy-Org/Qwen-Image-2.1::text_encoders/qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors||wf:qwen21`
+  (and the `_pe_i2i` twin for qwen21-edit, 9.5 GB each), delete the two
+  `.provisioned-image_qwen_image_2_1_*` markers in the workflows folder, and re-run.
 
----
+### krea2
+- **Simple Krea2 NSFW+ LLM** (`simpleKrea2NSFWLLM_v10.json`, Civitai 3087685): Krea 2
+  Turbo fp8, NSFW+ LoRA @ 0.85 ("Enable LoRA?"), prompt refinement ON ("Refine Prompt?")
+  through the Plush Advanced Prompt Enhancer, patched to `Ollama (URL)` /
+  `dolphin3:8b` / `http://127.0.0.1:11434/v1`. Ollama must be running with dolphin3
+  pulled before ComfyUI starts; `install-workflow.sh krea2` and `finish` handle both.
+  10 steps, cfg 1, euler / beta57.
+- **Official Krea 2 Turbo t2i** (`image_krea2_turbo_t2i.json`, pinned `98fd32c`): runs as
+  downloaded (Turbo fp8 + darkbrush LoRA).
+- **Raw + Lenovo UltraReal** for maximum realism: in either graph set `unet_name` to
+  `krea2_raw_fp8_scaled.safetensors`, LoRA `lenovo_krea2_3000.safetensors` @ 0.8,
+  cfg 3.5-4, about 52 steps. On Turbo the Lenovo LoRA wants 1.2-2.0.
+- `Krea2 NSFW+.safetensors` lives in `loras/Krea2/` because the graph loads it by that path.
 
-## 2. Problems faced and how they were solved
+### edit-2509
+`image` plus optional `image2`/`image3`. Lightning LoRA on by default (4 steps, cfg 1);
+toggle "Enable Lightning LoRA" off for the 20-step, cfg 2.5 quality path.
 
-### 2026-09-24 — GitHub Actions build failure (`docker/*` v5 tags)
-First automated build failed: the workflow referenced `docker/*` action tags
-that don't exist. Fixed to **v4** tags and re-pushed.
+### krea-style
+Generates a new image in the style of 1-3 reference images (not an edit of them).
+`prompt_enhance` off by default, LoRA strength 1, 1024×1024.
 
-### 2026-09-24 — Docker build failure (`ensurepip` disabled)
-Build failed on `ensurepip` — Debian/Ubuntu system Python disables it. Fixed by
-installing pip via `get-pip.py` instead.
+### wan-i2v
+Graph from the Civitai zip (`uncensoredWan22Remix_v10.zip`). Wiring that works: high
+loader → `Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0`, low loader → `…low_lighting_v2.0`,
+CLIP → `nsfw_wan_umt5-xxl_fp8_scaled`, VAE → `wan_2.1_vae`, "Video Upscale With Model"
+→ `4x_foolhardy_Remacri.pth`.
 
-### 2026-09-24 — Moody Krea 2 Mix misclassified
-The file was first treated as a LoRA. It is a **diffusion model** (Krea 2
-family), so it was reclassified: the Krea 2 Raw base
-(`krea2_raw_fp8_scaled.safetensors`, from the official `Comfy-Org/Krea-2`
-repack — the `krea/Krea-2-Raw` repo is approval-gated and not needed) plus the
-Qwen3-VL 4B encoder (`qwen3vl_4b_fp8_scaled.safetensors`) and the Qwen Image VAE
-(`qwen_image_vae.safetensors`). The obsolete
-`diffusion_models/moodyKrea2Mix_v70BF16.safetensors` was removed from the plan.
+### minimax-h3
+Graph: "MiniMax H3 All-in-One Workflow" by Alice_AIisinWonderland (Civitai 2913151,
+EN version 3295505; 3295435 is the same graph with Japanese notes). Login-gated, so it
+is fetched on-instance and never committed. Needs **ComfyUI >= 0.30.0**.
 
-### 2026-09-24 — Wan2.2 KSampler matrix mismatch
-The Wan workflow errored because the text encoder wired in was a Qwen3-VL
-encoder instead of UMT5. Corrected mapping:
-low loader → `Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors`,
-high loader → `Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors`,
-CLIP → `nsfw_wan_umt5-xxl_fp8_scaled.safetensors`,
-VAE → `wan_2.1_vae.safetensors`.
-
-### 2026-09-24 — Missing upscaler for the Wan workflow
-The Wan2.2-Remix "Video Upscale With Model" node failed on the missing
-`/workspace/models/upscale_models/4x_foolhardy_Remacri.pth`. Added
-`upscale|4x_foolhardy_Remacri.pth|hf|FacehugmanIII/4x_foolhardy_Remacri|` to
-`models.list`.
-
-### 2026-09-24 — Workflows invisible in the UI (the symlink bug)
-**Symptom:** the ComfyUI sidebar listed only the Wan workflow, although three
-more had been provisioned.
-**Root cause:** on the stock template `/workspace/ComfyUI/user` was a **real
-directory** (containing only 2 files), while provisioned workflows lived in
-`/workspace/comfyui-user/default/workflows/`. ComfyUI reads workflows from its
-own `user/` dir, so it never saw the others.
-**Fix** (run with ComfyUI stopped):
-```bash
-cp -rn /workspace/ComfyUI/user/. /workspace/comfyui-user/
-rm -rf /workspace/ComfyUI/user
-ln -s /workspace/comfyui-user /workspace/ComfyUI/user
-```
-Then restart ComfyUI and hard-refresh the browser tab.
-
-### 2026-09-24 — Stock-template vs image path mismatch (open)
-The automation was written for `/opt/ComfyUI` (Python 3.11); the stock Vast
-template runs ComfyUI from `/workspace/ComfyUI` (`/venv/main`, Python 3.12).
-`provision.sh`/`start.sh` should be taught to detect and support the stock
-path. Until then, provision manually with `bash scripts/provision.sh` and the
-symlink fix above.
-
-### 2026-09-24 — Lenovo LoRA variants resolved
-- **Lenovo Qwen2.1:** resolved via Civitai version ID **3349565**
-  ("v1.0 Qwen2.1", baseModel "Qwen 2", published 2026-09-22). Wired as
-  `lora|lenovo_qwen21.safetensors|civitai|3349565|` with Qwen-Image-2.1 base
-  weights from `Comfy-Org/Qwen-Image-2.1` (verified against the creator's own
-  example workflow in the version metadata). Creator settings: cfg 3–4
-  (1 if slop), beta scheduler, res_2s/res_2m/res_multistep samplers
-  (RES4LYF nodes), example at 50 steps / cfg 4 / res_2s, LoRA 0.7.
-- **Lenovo Krea 2:** taken straight from the creator's HuggingFace
-  (`Danrisi/Lenovo_Krea2::lenovo_krea2_3000.safetensors`); safetensors header
-  confirms it was trained on the Krea 2 **Raw** base. Creator settings:
-  strength 0.8 on Raw, 1.2–2.0 on Turbo; cfg 4 on Raw, cfg 1 + Turbo LoRA.
-
-### 2026-09-24 — TryCloudflare URL unreachable from the managed browser
-Repeated HTTPS/HTTP attempts to the instance's TryCloudflare URL failed from
-the managed browser route (it may still work from a personal device). All
-diagnosis since has been terminal-based.
-
-### 2026-09-24 — Flux.2 Klein 9B base removed (HF approval required)
-`black-forest-labs/FLUX.2-klein-9B` doesn't just need a license click-through —
-it requires **approval**: `hf download` failed with "Access denied. This
-repository requires approval." Removed the base model and both Flux workflows
-(text-to-image + image edit). Kept the ungated Qwen3-8B encoder, Flux2 VAE, and
-InstaPic LoRA, so the stack works if the base is sourced manually — drop
-`flux-2-klein-9b.safetensors` into `models/diffusion_models/`. Re-add lines are
-commented in `config/models.list`.
-Also fixed the `FutureWarning` in `provision.sh`: `HF_HUB_ENABLE_HF_TRANSFER`
-is deprecated and ignored — it now sets `HF_XET_HIGH_PERFORMANCE=1` instead.
-
-### 2026-09-24 — Downloads reorganized by workflow (replaces terminal sharding)
-`models.list` / `nodes.txt` lines now carry `wf:<id>` tags naming the
-workflow(s) that need each file; `provision.sh` accepts `WORKFLOW=<id>` /
-`--workflow <id>` (plus `--list-workflows`), and `scripts/install-workflow.sh`
-is the one-command installer (models + tagged nodes + workflow JSON,
-idempotent and parallel-safe). `SHARD_INDEX`/`SHARD_TOTAL` sharding and
-`stock-setup.sh dl` are gone — parallelize by giving each terminal a different
-workflow id instead. Untagged lines form the `global` pool (fetched by full
-runs and `WORKFLOW=global`). `stock-setup.sh` is now
-`init | <id> | all | finish | list`.
-
----
-
-## 3. Model inventory (from `config/models.list`)
-
-### Image generation stacks
-
-| Stack | Diffusion / base | Text encoder | VAE | LoRA |
-|---|---|---|---|---|
-| Flux.2 Klein 9B + InstaPic | `flux-2-klein-9b.safetensors` — **not downloaded** (`black-forest-labs/FLUX.2-klein-9B` needs HF approval) | `qwen_3_8b_fp8mixed.safetensors` | `flux2-vae.safetensors` | `V3_flux_klein.safetensors` (Civitai 2998522) |
-| Qwen-Image 2.1 + Lenovo | `qwen_image_2.1_int8_convrot.safetensors` | `qwen3vl_8b_int8_convrot.safetensors` | `qwen_image_2.1_vae_bf16.safetensors` | `lenovo_qwen21.safetensors` (Civitai 3349565) |
-| Krea 2 Raw + Lenovo | `krea2_raw_fp8_scaled.safetensors` | `qwen3vl_4b_fp8_scaled.safetensors` | `qwen_image_vae.safetensors` | `lenovo_krea2_3000.safetensors` (creator HF) |
-| Krea 2 Turbo (style-ref) | `krea2_turbo_int8_convrot.safetensors` | *(same as Raw)* | *(same as Raw)* | `krea2_style_reference.safetensors` (official, not Lenovo) |
-| Qwen-Image-Edit 2509 | `qwen_image_edit_2509_fp8_e4m3fn.safetensors` (~20 GB) | `qwen_2.5_vl_7b_fp8_scaled.safetensors` (~7 GB) | *(shared `qwen_image_vae.safetensors`)* | `Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors` (from `lightx2v/Qwen-Image-Lightning`) |
-| Z-Image Turbo | `intorealism_zitV90.safetensors` (checkpoint, Civitai 3258780) | — | — | — |
-
-### Video (Wan2.2 I2V)
-
-| Purpose | File |
-|---|---|
-| High-noise DiT | `wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors` |
-| Low-noise DiT | `wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors` |
-| Text encoder | `umt5_xxl_fp8_e4m3fn_scaled.safetensors` |
-| VAE | `wan_2.1_vae.safetensors` |
-| NSFW-unlocked high DiT | `Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors` (`FX-FeiHou/wan2.2-Remix`) |
-| NSFW-unlocked low DiT | `Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors` (`limiao1666/qw_nsfw`) |
-| NSFW UMT5 encoder | `nsfw_wan_umt5-xxl_fp8_scaled.safetensors` (`Osrivers/…`, gated — needs `HF_TOKEN`) |
-| Upscaler | `4x_foolhardy_Remacri.pth` (`FacehugmanIII/4x_foolhardy_Remacri`) |
-
-### Custom nodes (`config/nodes.txt`)
-ComfyUI_essentials, rgthree-comfy, KJNodes, comfyui_controlnet_aux,
-ComfyUI-Custom-Scripts, ComfyUI-GGUF, VideoHelperSuite, PainterI2V,
-Frame-Interpolation (video packs for the Wan workflow), **comfyui-ollama**
-(LLM prompt expansion), **RES4LYF** (`res_2s`/`res_2m` samplers for Qwen 2.1).
-ComfyUI-Manager is baked into the image — not listed.
-
-### Ollama
-`qwen3:8b` served on `:11434`. Wiring: `OllamaConnectivity` →
-`http://127.0.0.1:11434`, `OllamaGenerate` → `qwen3:8b`, STRING output into the
-positive prompt; append `/nothink` to suppress Qwen3 reasoning traces.
-
----
-
-## 4. Workflow inventory
-
-All provisioned from `models.list` (`workflow|…|url|…` entries, plain JSONs).
-
-### Text-to-image
-
-| File | Stack | First-load setup |
+| Mode | Job | UNet |
 |---|---|---|
-| `image_qwen_image_2_1_t2i.json` | Qwen-Image 2.1 + Lenovo | Insert `LoraLoaderModelOnly` (`lenovo_qwen21.safetensors` @ 0.7) after UNETLoader. KSampler: 50 steps / cfg 4 / `res_2s` / beta (RES4LYF). |
-| `image_krea2_turbo_t2i.json` | Krea 2 Raw + Lenovo | Native nodes: `lora_name` → `lenovo_krea2_3000.safetensors` @ 0.8, `unet_name` → `krea2_raw_fp8_scaled.safetensors`, ~52 steps / cfg 3.5–4. (Turbo fast path: 8 steps / cfg 1, LoRA 1.2–2.0.) |
+| 01 | Text to video | FL2VA |
+| 02 | Image to video (first frame) | FL2VA |
+| 03 | First / last frame | FL2VA |
+| 04 | Reference to video (up to 5 images, 3 videos, 3 audio clips) | REF2VA |
+| 05 | Motion tracking, DWPose skeleton video as Video 1 | REF2VA |
+| 06 | Motion tracking, DensePose surface video as Video 1 | REF2VA |
+| 07 | Motion tracking, SCAIL / NLF mesh video as Video 1 | REF2VA |
 
-### Image-to-image / reference-image (added 2026-09-24)
+- Pick the UNet in panel (1), the mode in panel (2), run. **Never recolour the groups**:
+  the panels find their groups by colour.
+- Lip sync works on top of any mode: put the voice clip in Audio 1 and the spoken lines
+  in `<d>…</d>` tags in the prompt.
+- The graph has no pose preprocessors: modes 05-07 expect a pre-made skeleton / surface
+  / mesh video. (`comfyui_controlnet_aux`, installed globally, has DWPose and DensePose
+  preprocessors; whether H3 accepts their output as-is is untested.)
+- Turbo 8-step LoRA is on by default (about 6× faster than 20 steps), loaded from
+  `loras/MINIMAX/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors`. The taeh3
+  decoder feeds the live preview, which is on by default.
+- H3 rules: no CFG and no negative prompt (BasicGuider), 24 fps fixed, frame count
+  17n+5, width/height multiples of 32, 768 px short edge baseline (1344×768 at 16:9,
+  pixel-area cap 768×1344).
+- Reference-to-video prompt guide:
+  https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md
+- Weights are the variants Comfy-Org's own H3 templates use (pruned int8 FL2VA/REF2VA,
+  Qwen3-VL 32B nvfp4 encoder, int8 video VAE, fp32 audio VAE). On first load, check
+  that the graph's loaders show these files; if a loader shows a missing file, pick the
+  matching one from its dropdown and save (see §10, open item 1).
+- Evaluated and rejected: the Spectrum cache node (approximate: output differs from
+  native even with the same seed).
 
-| File | What it does | References | New downloads | Notes |
-|---|---|---|---|---|
-| `image_qwen_image_2_1_image_edit.json` | Native Qwen-Image 2.1 edit | **Up to 10** (`image_1` = edit target, rest are refs) | **None** — uses your exact 2.1 base/encoder/VAE | Mention refs as `<img>1</img>` … in the prompt; refs may differ in size/aspect; output follows `image_1`. 25 steps / euler / cfg 1 |
-| `image_qwen_image_edit_2509.json` | Dedicated multi-image edit model | `image` + optional `image2`/`image3` | 2509 fp8 base (~20 GB) + Qwen2.5-VL 7B (~7 GB) + Lightning LoRA | **Turbo mode ON by default**: 4 steps / cfg 1 (the LoRA is required for this). Toggle "Enable Lightning LoRA" off for the 20-step / cfg 2.5 quality path. `ComfySwitchNode` is a core node (`comfy_extras.nodes_logic`) — no extra pack needed |
-| `image_krea2_turbo_int8_image_style_reference.json` | Style reference: generates a **new** image in the style of your refs | **Up to 3** | Turbo int8 base + `krea2_style_reference` LoRA (official, separate from Lenovo) | `prompt_enhance` off by default; LoRA strength 1, 1024×1024 |
+### wan-animate
+Graph: `wan-animate-motion-control.json` (nightfunnels "Motion Control", an unofficial
+port of RunningHub workflow 2042741071045726210; credits are kept in the graph notes).
+- Inputs: a driving video with the motion, and a reference image of the person with a
+  clearly visible face and hands (a photorealistic Krea 2 render works well). FPS 30,
+  duration in seconds, longest side 960 (fast) in the size node.
+- LoRA stack: relight 1.5, Lightning LOW 1, FastWan 1, PusaV1 1, **Instareal_low 1.0**.
+  If results look harsh or oversharpened, lower Instareal toward 0.8 first.
+- SeC-4B-fp8 segmentation is kept for parity with the uploaded graph; current
+  SecNodes upcasts fp8 to fp16. If segmentation fails, un-comment the fp16 line in
+  `models.list`, re-run `stock-setup.sh wan-animate`, and pick `SeC-4B-fp16` in the
+  SeC Model Loader.
+- The model loader uses `sageattn` (the stock image ships `sageattention` 1.0.6). If it
+  errors on SageAttention, set attention to `sdpa`. Block swap is 30 (made for
+  smaller GPUs); on 80 GB you can lower it for speed.
+- Changes vs the nightfunnels download are listed in
+  `config/patches/wan-animate-motion-control.json.patch.json`.
 
-Also present: the Wan2.2-Remix painter I2V workflow
-(`Wan2.2-Remix painter I2V-Ai Verse (1).json`, from the Civitai zip
-`uncensoredWan22Remix_v10.zip`) and `sdxlturbo_example.json`.
+### global / flux
+`global`: IntoRealism ZIT V9.0 (Z-Image Turbo checkpoint), ComfyUI_essentials,
+rgthree, KJNodes, controlnet_aux, Custom-Scripts, GGUF, comfyui-ollama, `qwen3:8b`
+(append `/nothink` to skip Qwen3 reasoning). `flux`: Qwen3-8B encoder, Flux2 VAE,
+InstaPic LoRA; the base `black-forest-labs/FLUX.2-klein-9B` needs HF *approval*, so
+it and the two Flux workflows stay commented in `models.list`.
 
-### Per-workflow installs (added 2026-09-24)
+## 5. Config formats
 
-Every `models.list` / `nodes.txt` line carries a `wf:<id>` tag naming the
-workflow(s) that need it. One command installs everything a workflow needs
-(its models + its workflow JSON + its tagged custom nodes):
-
-```bash
-bash scripts/install-workflow.sh qwen21      # or: bash scripts/stock-setup.sh qwen21
-bash scripts/provision.sh --list-workflows   # show the catalog
+```
+models.list        kind|filename|source|source_id|subdir|wf:ids
+nodes.txt          git_url|ref|wf:ids
+ollama-models.txt  model[:tag]|wf:ids
+catalog.txt        id|in_all|min_comfyui|description
 ```
 
-| Install id | Workflow file | Installs (models + nodes) |
-|---|---|---|
-| `qwen21` | `image_qwen_image_2_1_t2i.json` | 2.1 int8 base + Qwen3-VL 8B enc + 2.1 VAE + `lenovo_qwen21` LoRA + RES4LYF nodes |
-| `qwen21-edit` | `image_qwen_image_2_1_image_edit.json` | Same 2.1 stack as above (shared) + RES4LYF |
-| `krea2` | `image_krea2_turbo_t2i.json` | Krea2 Raw base + Qwen3-VL 4B enc + Qwen-Image VAE + `lenovo_krea2_3000` LoRA |
-| `edit-2509` | `image_qwen_image_edit_2509.json` | 2509 fp8 edit base + Qwen2.5-VL 7B enc + Lightning 4-step LoRA (+ shared Qwen-Image VAE) |
-| `krea-style` | `image_krea2_turbo_int8_image_style_reference.json` | Krea2 Turbo int8 base + `krea2_style_reference` LoRA (+ shared 4B enc + VAE) |
-| `wan-i2v` | `uncensoredWan22Remix_v10.zip` (extracted) | Wan2.2 high/low DiTs + UMT5 + Wan 2.1 VAE + NSFW Remix DiTs + NSFW UMT5 + 4x upscaler + VideoHelperSuite/PainterI2V/Frame-Interpolation |
-| `global` | — | Untagged extras: `intorealism_zitV90` checkpoint + global nodes |
-| `flux` | (disabled) | Encoder + VAE + InstaPic LoRA only — base needs HF approval |
+- `source`: `hf` → `repo_id::path/in/repo` (path defaults to the filename; a different
+  local filename renames the file), `civitai` → model **version** id, or
+  `version_id::member` to take one file out of a `.zip` release, `url` → direct link,
+  `bundled` → a file under `config/`.
+- `subdir` overrides the folder under `models/` (e.g. `loras/MINIMAX`). With no subdir
+  but a tag the line ends `||wf:<ids>`; with neither, a trailing `|` is optional.
+- `wf:` selection: `WORKFLOW=<id>` takes lines listing `<id>`; `WORKFLOW=global` takes
+  untagged lines plus lines listing `global`; a full run takes untagged lines plus
+  lines tagged with any id that is in `all`. Tag shared files with every workflow
+  that needs them, and add `global` to keep a line in the global set.
+- Adding a workflow: a `catalog.txt` line, tagged lines in the lists, and optionally a
+  bundled JSON or a patch. Nothing else to keep in sync.
+- Patches: `config/patches/<workflow-file>.patch.json` with `set_widgets`
+  (`node_type`, optional `node_id`, `index`, `value`, optional `expect`) and
+  `remove_nodes`. Applied after download; a patch whose `expect` no longer matches
+  aborts, leaving the file unpatched and reported.
+- Re-fetching a workflow JSON: delete `.provisioned-<name>` in the workflows folder
+  (and the JSON) and re-run. Deleted workflows are not re-downloaded otherwise.
 
-Parallelize across terminals by giving each a different id; every install is
-idempotent. `stock-setup.sh all` runs `init` + all ids + `finish` (global nodes
-+ Ollama) serially.
+## 6. How the engine works
 
----
+- Phases: `nodes` (clone or pull each pack; requirements and `install.py` only when the
+  commit changed, constrained to the installed torch/torchvision/torchaudio/xformers),
+  `models`, `ollama`; `PHASES=comfyui` updates ComfyUI core.
+- Downloads land in `/workspace/.staging` on the same volume, then move into place, so
+  interrupted downloads resume and half-files never appear under the final name.
+  Civitai tokens are handed to curl on stdin. HTML/JSON error pages are rejected.
+- Locks in `/workspace/.provision/locks`: node installs run one terminal at a time,
+  and two terminals never download the same file at once.
+- Ollama: an already running server is used; otherwise a temporary one is started and
+  stopped by PID afterwards.
+- `bash scripts/provision.sh --status [id]` lists missing files and node packs.
+- Progress is always visible (`hf` bars, `curl -#`, wget bar, `git --progress`).
 
-## 5. Instance runbook
+## 7. Disk budget
 
-### Provision / update everything (idempotent — skips what's present)
-```bash
-cd /workspace/comfyui-vastai && bash scripts/provision.sh
-```
+Per-workflow sizes are in §3; `all` is 281.7 GB of files plus about 10 GB of Ollama
+weights. Staging needs room for the largest file in flight (21 GB for an H3 UNet, more
+with parallel terminals), and outputs grow over time. Rent at least 350-400 GB for
+`all`, or size the disk for just the workflows you plan to use.
 
-### Install one workflow (idempotent — its models + nodes + workflow JSON)
-```bash
-cd /workspace/comfyui-vastai && bash scripts/install-workflow.sh qwen21
-# or on a fresh stock instance: bash scripts/stock-setup.sh qwen21
-# list ids: bash scripts/provision.sh --list-workflows
-```
+## 8. Golden image (alternative path)
 
-### If workflows don't show in the UI (symlink bug, §2)
-```bash
-# stop ComfyUI first
-cp -rn /workspace/ComfyUI/user/. /workspace/comfyui-user/
-rm -rf /workspace/ComfyUI/user
-ln -s /workspace/comfyui-user /workspace/ComfyUI/user
-# restart ComfyUI, hard-refresh the browser tab
-```
+`Dockerfile` → GitHub Actions → `ghcr.io/iamwicked/comfyui-vastai:latest`, booted by
+`entrypoint.sh` (SSH, persistent layout, `BOOT_WORKFLOWS` provisioning, default
+`global`) and `start.sh` (Ollama on 127.0.0.1, ComfyUI on 8188). Status: every build
+up to v5 failed because the Ollama installer needs `zstd`; v6 adds it, and the next
+push will show whether the build now passes (disk cleanup and non-fatal cache export
+were added too). After the first green build, make the GHCR package public or give
+Vast registry credentials. Template fields and CLI: `vastai/template.md`,
+`vastai/setup.sh` (entrypoint launch mode via `--args`).
 
-### Verification checks
-```bash
-ls -lh /workspace/models/upscale_models/4x_foolhardy_Remacri.pth
-ls -lh /workspace/models/diffusion_models/krea2_raw_fp8_scaled.safetensors
-grep -iE "import failed|failed to import|cannot import" /tmp/comfyui.log
-ls /workspace/comfyui-user/default/workflows/
-```
+ComfyUI has no login. On the stock template Vast's proxy puts a token in front of it;
+the golden image maps port 8188 directly, so keep that URL private.
 
-### Housekeeping
-```bash
-# remove a stale partial download if present
-rm -f /workspace/models/diffusion_models/moodyKrea2Mix_v70BF16.safetensors.tmp
-# delete the local token helper ONLY after all downloads finished
-rm /workspace/.vastai-tokens
-```
+## 9. Credentials
 
-### Suggested smoke-test order
-1. Qwen-Image 2.1 text-to-image (fast single-stack validation).
-2. Qwen-Image 2.1 image edit with one target + one reference (zero extra downloads).
-3. Then the heavier stacks (2509 edit, Krea style-ref, Wan I2V).
+- `HF_TOKEN` and `CIVITAI_TOKEN` exist only as environment variables in the terminal
+  that needs them. Enter them with `read -rs` (§2) so they stay out of shell history.
+  They are never written to files, the repo, or chat logs.
+- Gated HF repos also need the licence accepted on huggingface.co with the same
+  account (the NSFW UMT5 repo is flagged "not for all audiences").
+- `save-progress.sh` sends `GIT_TOKEN` as an env-only HTTP header, not in the URL.
+- Ollama listens on 127.0.0.1 only. To use it from your own machine (e.g. the
+  "AI Prompt Assistant Pro" desktop app), tunnel it:
+  `ssh -p <port> root@<host> -L 11434:127.0.0.1:11434`.
 
----
+## 10. Open items (to confirm on the next instance)
 
-*Last updated: 2026-09-24*
+1. **H3 loader filenames**: the all-in-one graph is login-gated, so its loaders could
+   not be compared with `models.list`. On first load, check each loader (or drop the EN
+   JSON into `~/Downloads` on the Mac so the list can be matched to it).
+2. **wan-i2v stock files (35.3 GB)**: the stock Wan2.2 I2V high/low DiTs and stock UMT5
+   are downloaded but the Remix wiring doesn't load them. Keep or drop.
+3. **Golden image**: fixed but unproven until the next Actions run; keep or retire.
+4. **Bundled nightfunnels graph** in a public repo (credits kept). Keep, or fetch it at
+   install time instead.
+5. **Word guide**: its minimax-h3 section predates the seven-mode graph.
+
+## 11. Problem log
+
+### 2026-09-28 — v6 rebuilt
+- The first v6 (local commits `3fc2ae2` … `46adf8e`) lived only in a previous agent's
+  environment and was lost; GitHub stopped at v5 (`6c973ad`). Rebuilt as documented in
+  `CHANGELOG.md`.
+- Every Actions build since `c4f5e92` failed at `curl … ollama.com/install.sh | sh`:
+  Ollama now ships `.tar.zst` and the installer exits without `zstd`. Reproduced in
+  `ubuntu:22.04`. Fixed in the Dockerfile and in `init`.
+- Comfy-Org's Qwen-Image 2.1 templates gained a 9.5 GB prompt-enhancer encoder on
+  2026-09-25, one day after the templates were wired in from `main`. All template URLs
+  are now pinned to commit SHAs.
+- On the stock template nothing installed `extra_model_paths.yaml`, so ComfyUI never saw
+  `/workspace/models`; the README also started a second ComfyUI on 8188, where Vast's
+  proxy already listens. Both fixed.
+- `rclone sync` in `save-progress.sh` would have deleted the backup when run from an
+  empty volume; `RCLONE_CONFIG` held config text although rclone reads it as a path.
+- `vastai/setup.sh` used `--ssh`, which makes Vast skip the image entrypoint, and an
+  invalid GPU name (`RTX_A100_80GB`).
+- The nightfunnels graph contains a RunningHub-only `RHHiddenNodes` feeding the LoRA
+  chain; it cannot load elsewhere and was removed.
+- `provision.sh` (v5) gave lines without a trailing `|` their source id as a folder, and
+  its `pkill -f "ollama serve"` killed any running Ollama. Both fixed.
+
+### 2026-09-24 — v1 to v5
+- Actions `docker/*@v5` tags did not exist (use v4); `ensurepip` is disabled on
+  Ubuntu's system python (use `get-pip.py`).
+- Moody Krea 2 Mix was misfiled as a LoRA; it is a Krea 2 diffusion model. Replaced by
+  the official Krea 2 Raw base (`krea/Krea-2-Raw` is approval-gated, the Comfy-Org
+  repack is not).
+- Wan2.2 KSampler matrix mismatch: a Qwen3-VL encoder was wired where UMT5 belongs.
+- Missing `4x_foolhardy_Remacri.pth` for the Wan upscale node.
+- Workflows invisible in the UI: on the stock template `ComfyUI/user` was a real
+  directory while workflows went to `/workspace/comfyui-user`. Now linked by `init`
+  with ComfyUI stopped.
+- Flux.2 Klein 9B base needs HF approval, not just a licence click; removed.
+- `HF_HUB_ENABLE_HF_TRANSFER` is deprecated; `HF_XET_HIGH_PERFORMANCE=1` instead.
+- The TryCloudflare URL was unreachable from the managed browser; diagnosis moved to
+  the terminal.
