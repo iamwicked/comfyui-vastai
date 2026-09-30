@@ -1,0 +1,169 @@
+# Safety_Guard minor-coded terms (design §M14, §A5; Req 4.4, 26.8, 27.5).
+# Text is rejected when it holds one of these as consecutive whole words, in any letter case and with any
+# separators: every Persona_File string, LLM response, dataset caption and Test_Grid prompt, and (with
+# resource-terms.txt) every Config_Lists line. "kid" does not match "kidding", so a plural or a one-word
+# spelling needs its own line. Numeric ages ("19 year old", "22yo") are matched in safety.py, not here.
+# Keep ordinary adult fashion and lifestyle words out: the Persona_Example must pass (tests/phase1/test_safety.py).
+# UTF-8, one term per line; "#" starts a comment.
+
+# ---- design §M14 ----
+child
+children
+kid
+kids
+minor
+minors
+underage
+teen
+teens
+teenage
+teenager
+preteen
+tween
+adolescent
+juvenile
+infant
+toddler
+schoolgirl
+schoolboy
+school uniform
+little girl
+little boy
+young girl
+young boy
+loli
+lolita
+shota
+jailbait
+barely legal
+high school
+middle school
+
+# ---- plurals and spellings that whole-word matching would otherwise miss ----
+teenagers
+teenaged
+preteens
+tweens
+adolescents
+juveniles
+infants
+toddlers
+schoolgirls
+schoolboys
+school girl
+school girls
+school boy
+school boys
+school uniforms
+little girls
+little boys
+young girls
+young boys
+underaged
+under-age
+jail bait
+high schooler
+high schoolers
+middle schooler
+middle schoolers
+
+# ---- more minor-coded words and phrases ----
+childlike
+newborn
+newborns
+schoolchild
+schoolchildren
+schoolkid
+schoolkids
+school-age
+school-aged
+preschool
+preschooler
+preschoolers
+kindergarten
+elementary school
+primary school
+grade school
+junior high
+pubescent
+prepubescent
+lolicon
+shotacon
+nymphet
+nymphets
+barely 18
+barely eighteen
+
+# ---- spelled-out ages one to twenty-four (design §M14) ----
+one year old
+one years old
+one yo
+two year old
+two years old
+two yo
+three year old
+three years old
+three yo
+four year old
+four years old
+four yo
+five year old
+five years old
+five yo
+six year old
+six years old
+six yo
+seven year old
+seven years old
+seven yo
+eight year old
+eight years old
+eight yo
+nine year old
+nine years old
+nine yo
+ten year old
+ten years old
+ten yo
+eleven year old
+eleven years old
+eleven yo
+twelve year old
+twelve years old
+twelve yo
+thirteen year old
+thirteen years old
+thirteen yo
+fourteen year old
+fourteen years old
+fourteen yo
+fifteen year old
+fifteen years old
+fifteen yo
+sixteen year old
+sixteen years old
+sixteen yo
+seventeen year old
+seventeen years old
+seventeen yo
+eighteen year old
+eighteen years old
+eighteen yo
+nineteen year old
+nineteen years old
+nineteen yo
+twenty year old
+twenty years old
+twenty yo
+twenty-one year old
+twenty-one years old
+twenty-one yo
+twenty-two year old
+twenty-two years old
+twenty-two yo
+twenty-three year old
+twenty-three years old
+twenty-three yo
+twenty-four year old
+twenty-four years old
+twenty-four yo

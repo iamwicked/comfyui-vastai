@@ -1,7 +1,50 @@
 # Changelog
 
 Version numbers follow the push bundles (`comfyui-vastai-v4.bundle`, `-v5.bundle`, ...).
-The current version is **v6**.
+The current version is **v7**.
+
+## v7 — 2026-10-01
+
+The AI influencer pipeline, Phase 1 (stills). Runbook: `REFERENCE.md` §13.
+
+### New ids
+- **influencer** (in `all`): Krea 2 Raw bf16 realism recipe with the turbo LoRA and
+  Qwen3-VL-4B bf16 encoder, Qwen-Image-Edit-2511 bf16 and Qwen2.5-VL-7B for carousel
+  Slides, Impact FaceDetailer with `face_yolov8m.pt`, VOSR2 finish, DeGrid, the Wan 2.1
+  VAEs, the licence-cleared look LoRAs, and the realism guide graph. About 107.7 GB, 102.1 GB
+  of it new (2026-09-28).
+- **influencer-video** (opt-in): MiniMax H3 Reels. Not yet available — arrives in Phase 3.
+- **influencer-nsfw** (opt-in): adult-content LoRAs under `loras/nsfw/` and `dolphin3:8b`.
+  Not yet available — arrives in Phase 4.
+- **character-design** (opt-in): sketch-to-Hero_Image and character sheets.
+  Not yet available — arrives in Phase 4.
+
+### New tools
+- `scripts/influencer.sh`, the launcher of the `scripts/influencer/` package, with the
+  Phase 1 subcommands `new-calendar`, `plan`, `render`, `finish`, `export`,
+  `persona check`, `calendar check`, `check-config` and `disk --id`.
+- The Export_Tool (`influencer.sh export`): graded JPEG exports, QC_Sheets, Publish_Sheets
+  and the week index, written atomically per Post.
+- The Config_Checker (`influencer.sh check-config`): every Config_Lists, template, example,
+  token, private-data, provenance and `.gitignore` rule offline, with the Licence_Gate over
+  the `# licence:` records.
+- The Disk_Estimator (`influencer.sh disk --id`), also printed by `install-workflow.sh`
+  before each install.
+- The Check_Suite (`scripts/check.sh`): `check-config`, the tests, `bash -n` and shellcheck
+  in one command, in its own pinned `.check-venv/`.
+- The Provisioner's read-only `--selection <id>|global|all` mode (`scripts/provision.sh`).
+- The Training_Kit (`scripts/train.sh`). Not yet available — arrives in Phase 2.
+- The `reels` stage. Not yet available — arrives in Phase 3.
+- The Source_Checker (`influencer.sh sources`). Not yet available — arrives in Phase 4.
+
+### Engine, backups and repo
+- The Provisioner (`provision.sh`, `install-workflow.sh`, `common.sh`): Civitai early-access
+  handling, the DeGrid guard, the VOSR2 prefetch and link, and the disk-estimate hook.
+- `save-progress.sh`: with `RCLONE_REMOTE` set, each Influencer_Root and
+  `models/loras/characters/` are also copied, each into its own folder under
+  `<RCLONE_REMOTE>.state`, which the outputs copy never writes into.
+- `.gitignore`: `/influencer/`, `/models/loras/characters/`, `/.check-venv/`,
+  `.pytest_cache/` and `.hypothesis/`.
 
 ## v6 — rebuilt 2026-09-28 (on top of v5 / `6c973ad`)
 
@@ -106,6 +149,36 @@ verified against HuggingFace / Civitai / GitHub on 2026-09-28.
   (hands-off and by hand) and what each way of ending a session means for the next
   one. The `/workspace/.vastai-tokens` helper file is gone (tokens are never written
   to disk).
+
+### Fixes from the code review
+- Engine:
+  - A Civitai archive or workflow zip that isn't a valid zip (usually a saved error page)
+    is deleted instead of being resumed, and failing, on every re-run.
+  - The lists are read on fd 3, so nothing inside the loops (git, pip, a node's
+    `install.py`) can swallow the remaining lines from stdin.
+  - `GIT_TERMINAL_PROMPT=0`: a node repo that went private or was deleted fails instead
+    of waiting at a password prompt.
+  - Downloads honour `MODELS_DIR`, as `--status` already did.
+  - A temporary Ollama server no longer inherits the ollama lock, and it is stopped when
+    a run ends early (error, Ctrl-C, SIGTERM). Before, a server left behind by a dead
+    run held the lock, so every later Ollama pull waited for it forever.
+  - A failing `ollama list` no longer ends the run.
+  - An unknown `PHASES` entry is an error instead of a silent no-op. Spaces are allowed
+    (`nodes, models`); before, the phase after the space was silently skipped.
+  - A failed workflow patch explains how to retry it.
+- `init` no longer stops without a message when `comfyui_version.py` is missing, and says
+  so when ComfyUI is not at `COMFYUI_DIR`.
+- `save-progress.sh`:
+  - On a new instance it continues the backup repo's history, so the push is a
+    fast-forward instead of being rejected, and workflows that only the backup has stay
+    in it.
+  - It exits non-zero when the push or the copy fails.
+  - `rclone.conf` is created 0600 from the start.
+- `patch-workflow.py` keeps the workflow file's permissions.
+- The scripts pass ShellCheck at its default severity. The Check_Suite's `shellcheck`
+  step uses that severity, and it failed on two info-level notes.
+- Hands-off setup docs: delete the template's `PROVISIONING_COMFYUI_WORKFLOWS` row. When
+  its downloads fail, Vast never runs `PROVISIONING_SCRIPT`.
 
 ## v5 — `6c973ad` (2026-09-24)
 Downloads organised by workflow: `wf:` tags, `WORKFLOW=<id>`, `install-workflow.sh`,

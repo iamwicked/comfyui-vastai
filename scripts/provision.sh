@@ -21,12 +21,16 @@
 #   bash scripts/provision.sh                         # full run
 #   bash scripts/provision.sh --list-workflows
 #   bash scripts/provision.sh --status [id]           # what's installed/missing
+#   bash scripts/provision.sh --selection <id>|global|all   # what a run selects (read-only)
 #   PHASES=models bash scripts/provision.sh --workflow wan-animate
 #
 # PHASES: comma-separated subset of nodes,models,ollama (default: all three);
 #         `comfyui` is an extra opt-in phase that updates ComfyUI core.
 # Progress is always visible (hf / curl -# / wget bar / git --progress).
 set -euo pipefail
+# A node repo that went private or was deleted must fail fast instead of
+# waiting for a username at a prompt nobody answers.
+export GIT_TERMINAL_PROMPT=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
@@ -83,7 +87,14 @@ catalog_lines() { [ -f "$CATALOG" ] && grep -vE '^[[:space:]]*(#|$)' "$CATALOG" 
 catalog_ids()   { catalog_lines | cut -d'|' -f1; }
 catalog_all()   { catalog_lines | awk -F'|' '$2=="yes"{print $1}'; }
 catalog_field() { catalog_lines | awk -F'|' -v id="$1" -v n="$2" '$1==id{print $n; exit}'; }
-catalog_has()   { local ids; ids="$(catalog_ids)"; grep -qxF -- "$1" <<< "$ids"; }
+catalog_has() { # $1: id -> 0 if the catalog lists it. A case match, not grep <<<: bash 3.2
+  # writes every here-string to a temp file in /var/tmp or /tmp, and --selection writes nothing.
+  local nl=$'\n' ids
+  case "$1" in ''|*"$nl"*) return 1 ;; esac   # no id is empty or spans two lines
+  ids="$nl$(catalog_ids)$nl"
+  case "$ids" in *"$nl$1$nl"*) return 0 ;; esac
+  return 1
+}
 IN_ALL=" $(catalog_all | tr '\n' ' ') "
 
 list_workflows() {
@@ -226,8 +237,10 @@ install_nodes() {
   stamp_dir="$(env_stamp_dir)"
   if [ -n "$stamp_dir" ]; then mkdir -p "$stamp_dir"; else warn "cannot keep dependency stamps for $PYTHON; requirements reinstall every run"; fi
   mkdir -p "$COMFYUI_DIR/custom_nodes"
-  local line url ref tag name dest existing after stamp
-  while IFS= read -r line || [ -n "$line" ]; do
+  local line url ref tag name lname clash dest existing after stamp
+  # The list is read on fd 3, so nothing in the loop (git, pip, a node's
+  # install.py) can swallow the remaining lines from stdin.
+  while IFS= read -r line <&3 || [ -n "$line" ]; do
     line="${line%$'\r'}"
     case "$(trim "$line")" in ''|\#*) continue ;; esac
     IFS='|' read -r url ref tag _ <<< "$line"
@@ -235,6 +248,15 @@ install_nodes() {
     selected "$tag" || continue
     name="$(basename "$url" .git)"
     dest="$COMFYUI_DIR/custom_nodes/$name"
+    lname="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+    if [ "$lname" = comfyui-degrid ]; then
+      # ComfyUI-SaveSimple registers the same node id, VAEDeGrid (Req 3.4): no clone, pull or requirements.
+      clash="$(find "$COMFYUI_DIR/custom_nodes" -mindepth 1 -maxdepth 1 -iname ComfyUI-SaveSimple -print -quit 2>/dev/null || true)"
+      if [ -n "$clash" ]; then
+        fail "skipped $name: node id VAEDeGrid collides with $clash"
+        continue
+      fi
+    fi
     # Same pack installed under another case (ComfyUI-Manager / registry installs)?
     existing="$(find "$COMFYUI_DIR/custom_nodes" -mindepth 1 -maxdepth 1 -iname "$name" -print -quit 2>/dev/null || true)"
     [ -n "$existing" ] && dest="$existing"
@@ -262,12 +284,18 @@ install_nodes() {
       log "installing requirements for $(basename "$dest")"
       pip_install -r "$dest/requirements.txt" || { ok=0; fail "requirements failed for $(basename "$dest")"; }
     fi
+    if [ "$lname" = comfyui-impact-pack ] && [ ! -e "$COMFYUI_DIR/custom_nodes/skip_download_model" ]; then
+      # Impact Pack's install.py fetches its SAM model (375 MB, unused here) unless this empty
+      # marker exists; ComfyUI ignores a plain file in custom_nodes.
+      : > "$COMFYUI_DIR/custom_nodes/skip_download_model"
+      log "created custom_nodes/skip_download_model (Impact Pack skips its SAM download)"
+    fi
     if [ -f "$dest/install.py" ]; then
       log "running install.py for $(basename "$dest")"
       (cd "$dest" && "$PYTHON" install.py) || { ok=0; fail "install.py failed for $(basename "$dest")"; }
     fi
     if [ "$ok" = 1 ] && [ -n "$stamp" ]; then printf '%s' "$after" > "$stamp"; fi
-  done < "$list"
+  done 3< "$list"
   lock_release
 }
 
@@ -290,8 +318,30 @@ fetch_hf() { # $1 source_id (repo::path)  $2 filename -> DOWNLOADED
   rm -f "$stage/.cache/huggingface/download/$rpath.metadata" 2>/dev/null || true
 }
 
-curl_civitai() { # $1 version id  $2 output file (resumes a partial file from an earlier run)
+civitai_probe() { # $1 version id  $2 output file  $3 filename -> 2 on an early-access answer, else 0
+  # One request without following redirects, for the first 64 KB only, before the download
+  # (Req 2.7-2.9). Civitai answers an early-access version with 403 and a body that says so.
+  local probe code rc=0
+  probe="$STAGING_DIR/civitai/${2##*/}.probe"
+  mkdir -p "$STAGING_DIR/civitai"
+  code="$(printf 'header = "Authorization: Bearer %s"\n' "$CIVITAI_TOKEN" \
+    | curl -K - -sS --range 0-65535 -o "$probe" -w '%{http_code}' \
+        "https://civitai.com/api/download/models/$1")" || rc=$?
+  if [ "$code" = 403 ] && [ -f "$probe" ] \
+      && grep -qi -- 'early access' "$probe"; then
+    rm -f "$probe"
+    fail "early access: $3 (Civitai version $1) — the version is in early access; it downloads once early access ends"
+    return 2
+  fi
+  # 2xx/3xx: the download goes ahead; any other answer (curl exit $rc) keeps the download's own handling.
+  rm -f "$probe"
+  return 0
+}
+
+curl_civitai() { # $1 version id  $2 output file (resumes a partial file from an earlier run)  $3 filename
+  # -> 0 when downloaded, 2 on an early-access answer (already reported), 1 otherwise
   local code rc=0
+  civitai_probe "$1" "$2" "${3:-${2##*/}}" || return 2
   # Token goes through stdin (-K -), so it never shows up in the process list.
   # curl does not forward it when Civitai redirects to its CDN.
   code="$(printf 'header = "Authorization: Bearer %s"\n' "$CIVITAI_TOKEN" \
@@ -319,19 +369,33 @@ fetch_civitai() { # $1 version id (optionally id::member-in-archive)  $2 filenam
     return 1
   fi
   mkdir -p "$STAGING_DIR/civitai"
+  local rc=0
   if [ -z "$member" ]; then
     part="$STAGING_DIR/civitai/$vid.part"
-    curl_civitai "$vid" "$part" || { fail "Civitai download failed (version $vid)"; return 1; }
+    curl_civitai "$vid" "$part" "$2" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      [ "$rc" -eq 2 ] || fail "Civitai download failed (version $vid)"   # 2: early access, reported
+      return 1
+    fi
     DOWNLOADED="$part"
     return 0
   fi
   # Archive release: download once, extract the one member we need.
   archive="$STAGING_DIR/civitai/$vid.zip"
   if [ ! -s "$archive" ]; then
-    curl_civitai "$vid" "$archive.part" || { fail "Civitai download failed (version $vid)"; return 1; }
+    curl_civitai "$vid" "$archive.part" "$2" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      [ "$rc" -eq 2 ] || fail "Civitai download failed (version $vid)"
+      return 1
+    fi
     mv -f "$archive.part" "$archive"
   fi
-  members="$(unzip -Z1 "$archive" 2>/dev/null || true)"
+  if ! members="$(unzip -Z1 "$archive" 2>/dev/null)"; then
+    # Not a zip (usually an error or login page). Kept, it would be reused on every re-run.
+    rm -f "$archive"
+    fail "Civitai version $vid did not return a zip archive (error page?); removed it, re-run to download again"
+    return 1
+  fi
   m=""
   if grep -qxF -- "$member" <<< "$members"; then
     m="$member"
@@ -380,7 +444,10 @@ finish_workflow() { # $1 downloaded file  $2 filename  $3 marker
       if unzip -o "$file" -d "$WORKFLOWS_DIR"; then
         rm -f "$file"
       else
-        fail "unzip failed for $name"; return 1
+        # Kept, a broken archive would be resumed (and fail) on every re-run.
+        rm -f "$file"
+        fail "unzip failed for $name (not a zip, or truncated); removed it, re-run to download again"
+        return 1
       fi
       ;;
     *)
@@ -391,7 +458,8 @@ finish_workflow() { # $1 downloaded file  $2 filename  $3 marker
       patch="$CONFIG_DIR/patches/$name.patch.json"
       if [ -f "$patch" ]; then
         log "applying patch: patches/$(basename "$patch")"
-        "$PYTHON" "$SCRIPT_DIR/patch-workflow.py" "$file" "$patch" || { fail "patch failed for $name (left unpatched)"; }
+        "$PYTHON" "$SCRIPT_DIR/patch-workflow.py" "$file" "$patch" \
+          || fail "patch failed for $name, so it is installed unpatched. Re-runs skip it: fix the patch, delete $WORKFLOWS_DIR/.provisioned-$name, then re-run"
       fi
       mv -f "$file" "$WORKFLOWS_DIR/$name"
       ;;
@@ -407,7 +475,8 @@ download_models() {
   mkdir -p "$MODELS_DIR" "$STAGING_DIR" "$WORKFLOWS_DIR"
   log "free space on $WORKSPACE: $(df -h "$WORKSPACE" 2>/dev/null | awk 'NR==2{print $4}')"
   local line kind filename source source_id subdir tag dir dest marker lockname
-  while IFS= read -r line || [ -n "$line" ]; do
+  # fd 3 for the list: hf, curl, wget, unzip and python never see it on stdin.
+  while IFS= read -r line <&3 || [ -n "$line" ]; do
     line="${line%$'\r'}"
     case "$(trim "$line")" in ''|\#*) continue ;; esac
     IFS='|' read -r kind filename source source_id subdir tag _ <<< "$line"
@@ -420,8 +489,8 @@ download_models() {
       marker="$WORKFLOWS_DIR/.provisioned-${filename%.zip}"
       [ -f "$marker" ] && { log "workflow already installed: $filename"; continue; }
     else
-      dir="models/${subdir:-$(kind_to_dir "$kind")}"
-      dest="$WORKSPACE/$dir/$filename"
+      dir="models/${subdir:-$(kind_to_dir "$kind")}"   # as shown in messages
+      dest="$MODELS_DIR/${dir#models/}/$filename"     # MODELS_DIR, like --status
       [ -s "$dest" ] && { log "exists, skipping: $dir/$filename"; continue; }
     fi
     lockname="file-$(printf '%s' "$dest" | cksum | cut -d' ' -f1)"
@@ -455,14 +524,53 @@ download_models() {
       rm -f "$DOWNLOADED"
     fi
     lock_release
-  done < "$list"
+  done 3< "$list"
+}
+
+# ComfyUI-VOSR2 loads DINOv2 as dinov2_vitl14.safetensors and would convert the .pth at the first
+# Job otherwise (Req 3.3). The .pth stays, so a re-run skips its download; the conversion runs
+# only while the target is missing (Req 3.7).
+vosr2_convert() {
+  local dir="$MODELS_DIR/vosr2/VOSR2" src dst tmp
+  src="$dir/dinov2_vitl14_pretrain.pth"
+  dst="$dir/dinov2_vitl14.safetensors"
+  tmp="$dst.tmp"
+  if [ ! -f "$src" ] || [ -f "$dst" ]; then return 0; fi
+  log "converting models/vosr2/VOSR2/dinov2_vitl14_pretrain.pth to dinov2_vitl14.safetensors"
+  rm -f "$tmp"
+  if "$PYTHON" - "$src" "$tmp" <<'EOF' && [ -s "$tmp" ]; then
+import sys
+
+import torch
+from safetensors.torch import save_file
+
+state = torch.load(sys.argv[1], map_location="cpu", weights_only=True)
+save_file({key: value.contiguous() for key, value in state.items()}, sys.argv[2])
+EOF
+    mv -f "$tmp" "$dst"
+    log "saved: models/vosr2/VOSR2/dinov2_vitl14.safetensors"
+  else
+    rm -f "$tmp"
+    fail "VOSR2: converting dinov2_vitl14_pretrain.pth to dinov2_vitl14.safetensors failed (the first VOSR2 Job converts it instead)"
+  fi
 }
 
 # ---- 4. Ollama models (weights live on the volume) ----
 ollama_up() { curl -fsS --max-time 3 "http://127.0.0.1:11434/api/version" >/dev/null 2>&1; }
 
+# A temporary server lives only as long as this run: stopped at the end of
+# pull_ollama, or by the EXIT trap if the run ends early (error, Ctrl-C, SIGTERM).
+OLLAMA_TEMP_PID=""
+stop_temp_ollama() {
+  [ -n "$OLLAMA_TEMP_PID" ] || return 0
+  kill "$OLLAMA_TEMP_PID" 2>/dev/null || true
+  wait "$OLLAMA_TEMP_PID" 2>/dev/null || true
+  OLLAMA_TEMP_PID=""
+  log "temporary Ollama server stopped"
+}
+
 pull_ollama() {
-  local list="$CONFIG_DIR/ollama-models.txt" line model tag want have temp_pid=""
+  local list="$CONFIG_DIR/ollama-models.txt" line model tag want have
   [ -f "$list" ] || { log "no ollama-models.txt, skipping"; return 0; }
   local wanted=()
   while IFS= read -r line || [ -n "$line" ]; do
@@ -482,12 +590,23 @@ pull_ollama() {
   if ! ollama_up; then
     log "starting a temporary Ollama server (models dir: $OLLAMA_MODELS_DIR)"
     mkdir -p "$OLLAMA_MODELS_DIR" "$STATE_DIR"
-    OLLAMA_MODELS="$OLLAMA_MODELS_DIR" ollama serve >>"$STATE_DIR/ollama-provision.log" 2>&1 &
-    temp_pid=$!
+    # The server must not inherit the lock's fd: a server left behind by a run that
+    # died would hold the ollama lock, and every later run would wait for it forever.
+    ( if [ -n "$LOCK_FD" ]; then exec {LOCK_FD}>&-; fi
+      OLLAMA_MODELS="$OLLAMA_MODELS_DIR" exec ollama serve ) >>"$STATE_DIR/ollama-provision.log" 2>&1 &
+    OLLAMA_TEMP_PID=$!
+    trap stop_temp_ollama EXIT
+    trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP   # all of them run the EXIT trap
     for _ in $(seq 1 30); do ollama_up && break; sleep 2; done
-    ollama_up || { fail "Ollama server did not start (see $STATE_DIR/ollama-provision.log)"; kill "$temp_pid" 2>/dev/null || true; lock_release; return 0; }
+    if ! ollama_up; then
+      fail "Ollama server did not start (see $STATE_DIR/ollama-provision.log)"
+      stop_temp_ollama; trap - EXIT INT TERM HUP
+      lock_release; return 0
+    fi
   fi
-  have="$(ollama list 2>/dev/null | awk 'NR>1 {print $1}')"
+  # `|| have=""`: under pipefail a failing `ollama list` would otherwise end the
+  # whole run here. Pulling a model that is already present is harmless.
+  have="$(ollama list 2>/dev/null | awk 'NR>1 {print $1}')" || have=""
   for model in "${wanted[@]}"; do
     want="$model"
     case "$want" in *:*) ;; *) want="$want:latest" ;; esac
@@ -498,10 +617,9 @@ pull_ollama() {
       ollama pull "$want" || fail "ollama pull failed: $want"
     fi
   done
-  if [ -n "$temp_pid" ]; then
-    kill "$temp_pid" 2>/dev/null || true
-    wait "$temp_pid" 2>/dev/null || true
-    log "temporary Ollama server stopped"
+  if [ -n "$OLLAMA_TEMP_PID" ]; then
+    stop_temp_ollama
+    trap - EXIT INT TERM HUP
   fi
   lock_release
 }
@@ -548,6 +666,48 @@ status_report() { # $1: optional workflow id
   done
 }
 
+# ---- read-only Selection mode: --selection <id>|global|all ----
+# Prints the lines a run would install and does nothing else: no directory, lock, staging or
+# log file, and no network. It also runs on the Mac, so it stays bash 3.2 safe (no arrays,
+# mapfile, {fd} or flock) and uses no here-string, which bash 3.2 writes to a temp file in
+# /var/tmp or /tmp whatever TMPDIR says.
+print_selection() { # the Selection of the current run (WORKFLOW) in the design's §M10 format
+  local file n line rest out i field tag
+  for file in models.list nodes.txt ollama-models.txt; do
+    case "$file" in models.list) n=5 ;; nodes.txt) n=2 ;; *) n=1 ;; esac   # fields before the tag
+    printf '[%s]\n' "$file"
+    [ -f "$CONFIG_DIR/$file" ] || continue   # the install phases skip a missing list too
+    while IFS= read -r line <&3 || [ -n "$line" ]; do
+      line="${line%$'\r'}"
+      case "$(trim "$line")" in ''|\#*) continue ;; esac
+      # Split as the install loops' `IFS='|' read -r <n fields> tag _ <<< "$line"` does: field k
+      # is the text before the k-th `|`, and a field past the end of the line is empty.
+      rest="$line" out="" i=0
+      while [ "$i" -lt "$n" ]; do
+        case "$rest" in *'|'*) field="${rest%%|*}"; rest="${rest#*|}" ;; *) field="$rest"; rest="" ;; esac
+        out="$out|$(trim "$field")"
+        i=$((i + 1))
+      done
+      tag="$(trim "${rest%%|*}")"
+      selected "$tag" || continue
+      printf '%s\n' "${out#|}"
+    done 3< "$CONFIG_DIR/$file"
+  done
+}
+
+selection_mode() { # $1: <id>, global or all (a full run) -> prints that run's Selection, or exits 1
+  export LC_ALL=C   # trim's [[:space:]], grep and awk work on bytes, whatever the caller's locale
+  [ -f "$CATALOG" ] || { warn "missing $CATALOG"; exit 1; }
+  IN_ALL=" $(catalog_all | tr '\n' ' ') "   # computed again, now under LC_ALL=C
+  case "$1" in
+    all)    unset WORKFLOW ;;
+    global) WORKFLOW=global ;;
+    *)      catalog_has "$1" || { warn "unknown workflow '$1' — available:"; list_workflows >&2; exit 1; }
+            WORKFLOW="$1" ;;
+  esac
+  print_selection
+}
+
 # ---- main ----
 main() {
   local status_id="" do_status=0
@@ -555,6 +715,7 @@ main() {
     case "$1" in
       --workflow) WORKFLOW="${2:?--workflow needs a workflow id}"; shift 2 ;;
       --list-workflows) list_workflows; exit 0 ;;
+      --selection) selection_mode "${2-}"; exit 0 ;;   # read-only, before any side effect
       --status) do_status=1; status_id="${2:-}"; [ $# -ge 2 ] && shift; shift ;;
       -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
       *) warn "ignoring unknown argument: $1"; shift ;;
@@ -569,6 +730,11 @@ main() {
     warn "unknown workflow '$WORKFLOW' — available:"; list_workflows; exit 1
   fi
   PHASES="${PHASES:-nodes,models,ollama}"
+  PHASES="${PHASES// /}"   # "nodes, models" means nodes,models (the checks below match ",models,")
+  local p
+  for p in ${PHASES//,/ }; do   # a typo must not end in "provisioning complete" with nothing done
+    case "$p" in nodes|models|ollama|comfyui) ;; *) fail "unknown phase '$p' in PHASES (valid: nodes, models, ollama, comfyui)" ;; esac
+  done
   log "config=$CONFIG_DIR comfyui=$COMFYUI_DIR models=$MODELS_DIR python=$PYTHON"
   log "run: ${WORKFLOW:-full (all)}  phases: $PHASES"
   case ",$PHASES," in *,comfyui,*)
@@ -576,7 +742,7 @@ main() {
     lock_acquire nodes; make_constraints; update_comfyui; lock_release ;;
   esac
   case ",$PHASES," in *,nodes,*)  install_nodes ;; esac
-  case ",$PHASES," in *,models,*) download_models ;; esac
+  case ",$PHASES," in *,models,*) download_models; vosr2_convert ;; esac
   case ",$PHASES," in *,ollama,*) pull_ollama ;; esac
   if [ "${#FAILURES[@]}" -gt 0 ]; then
     warn "finished with ${#FAILURES[@]} problem(s):"

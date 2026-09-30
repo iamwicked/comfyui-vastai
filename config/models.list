@@ -43,15 +43,17 @@ workflow|image_qwen_image_2_1_image_edit.json|url|https://raw.githubusercontent.
 
 # ===== krea2 (Krea 2 text-to-image) =====================================
 # Shared Krea 2 encoder (CLIPLoader type "krea2") and Qwen-Image VAE.
+# licence: krea-2-community-license (repo-level licence of Comfy-Org/Krea-2; the VAE is byte-identical to the apache-2.0 copy in Comfy-Org/Qwen-Image_ComfyUI); conditions: commercial use only while total annual revenue, affiliates included, is under US$1,000,000 (enterprise licence above it, 2.3); content filter or human review (4.2); AI disclosure where law or platform policy requires it (4.3); no circumventing safety, usage, provenance or watermark measures (4.1(c)); Krea 2 Acceptable Use Policy; revocable (9.1, 9.2)
 text_encoder|qwen3vl_4b_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::text_encoders/qwen3vl_4b_fp8_scaled.safetensors||wf:krea2,krea-style
-vae|qwen_image_vae.safetensors|hf|Comfy-Org/Krea-2::vae/qwen_image_vae.safetensors||wf:krea2,krea-style,edit-2509
+vae|qwen_image_vae.safetensors|hf|Comfy-Org/Krea-2::vae/qwen_image_vae.safetensors||wf:krea2,krea-style,edit-2509,influencer
 # Krea 2 Turbo (distilled, 8-10 steps / cfg 1): the base both krea2 workflows load.
 diffusion|krea2_turbo_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_turbo_fp8_scaled.safetensors||wf:krea2
 # Krea 2 Raw (undistilled): the base Lenovo UltraReal was trained on (0.8, cfg 4, ~52 steps).
 diffusion|krea2_raw_fp8_scaled.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_raw_fp8_scaled.safetensors||wf:krea2
 # Realism / NSFW LoRA set:
 #   Lenovo UltraReal Krea 2 (creator's HF): 0.8 on Raw, 1.2-2.0 on Turbo
-lora|lenovo_krea2_3000.safetensors|hf|Danrisi/Lenovo_Krea2::lenovo_krea2_3000.safetensors||wf:krea2
+# licence: apache-2.0 (Danrisi/Lenovo_Krea2)
+lora|lenovo_krea2_3000.safetensors|hf|Danrisi/Lenovo_Krea2::lenovo_krea2_3000.safetensors||wf:krea2,influencer
 #   "0x7 - NSFW+ Krea2" (Civitai 3084588, 763 MB). The NSFW LLM workflow loads it as
 #   Krea2/Krea2 NSFW+.safetensors @ 0.85, hence the subfolder.
 lora|Krea2 NSFW+.safetensors|civitai|3084588|loras/Krea2|wf:krea2
@@ -148,6 +150,111 @@ detection|yolov10m.onnx|hf|Wan-AI/Wan2.2-Animate-14B::process_checkpoint/det/yol
 # fails, un-comment fp16 (7.9 GB), re-run, and pick it in the SeC Model Loader.
 sams|SeC-4B-fp8.safetensors|hf|VeryAladeen/Sec-4B::SeC-4B-fp8.safetensors||wf:wan-animate
 # sams|SeC-4B-fp16.safetensors|hf|VeryAladeen/Sec-4B::SeC-4B-fp16.safetensors||wf:wan-animate
+
+# ===== influencer (AI influencer stills) ===================================
+# Stills: Krea 2 Raw bf16 + turbo LoRA 0.6 (the realism guide's recipe), bf16 Qwen3-VL-4B encoder,
+# Wan 2.1 fp32 VAE (or the upscale2x VAE for sharp decoding), DeGrid, Impact FaceDetailer, VOSR2
+# upscale (x2; x3 for edited Slides). Carousel slides 2..N: Qwen-Image-Edit-2511 bf16 (below).
+# Krea 2 Raw bf16 (26.28 GB, sha256 f99bb0ff…03d7; the file the realism guide names), turbo LoRA
+# rank 64 (0.47 GB) and bf16 text encoder (8.88 GB)
+# source: https://huggingface.co/Comfy-Org/Krea-2
+# licence: krea-2-community-license (v1 of 2026-06-22, https://krea.ai/krea-2-licensing); conditions: commercial use only while total annual revenue, affiliates included, is under US$1,000,000 (enterprise licence above it, 2.3); content filter or human review (4.2); AI disclosure where law or platform policy requires it (4.3); no circumventing safety, usage, provenance or watermark measures (4.1(c)); Krea 2 Acceptable Use Policy; revocable (9.1, 9.2)
+# verified: 2026-09-28
+diffusion|krea2_raw_bf16.safetensors|hf|Comfy-Org/Krea-2::diffusion_models/krea2_raw_bf16.safetensors||wf:influencer
+lora|krea2_turbo_lora_rank_64_bf16.safetensors|hf|Comfy-Org/Krea-2::loras/krea2_turbo_lora_rank_64_bf16.safetensors||wf:influencer
+text_encoder|qwen3vl_4b_bf16.safetensors|hf|Comfy-Org/Krea-2::text_encoders/qwen3vl_4b_bf16.safetensors||wf:influencer
+# Qwen-Image-Edit-2511 bf16 for the Edit_Template (40.86 GB, sha256 ae42d927…e08c). It carries the
+# __index_timestep_zero__ marker that ComfyUI >= 0.5.0 detects. The 2511 Lightning LoRA is not
+# installed: the Edit_Template runs the full 40 steps at CFG 4.
+# source: https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI
+# licence: apache-2.0 (the Qwen/Qwen-Image-Edit-2511 card: Apache 2.0)
+# verified: 2026-09-28
+diffusion|qwen_image_edit_2511_bf16.safetensors|hf|Comfy-Org/Qwen-Image-Edit_ComfyUI::split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors||wf:influencer
+# Qwen2.5-VL-7B bf16 text encoder with its vision tower (16.58 GB, sha256 cfafd739…463a). The edit
+# VAE is qwen_image_vae.safetensors from the krea2 section, byte-identical to this repo's copy.
+# source: https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI
+# licence: apache-2.0
+# verified: 2026-09-28
+text_encoder|qwen_2.5_vl_7b.safetensors|hf|Comfy-Org/Qwen-Image_ComfyUI::split_files/text_encoders/qwen_2.5_vl_7b.safetensors||wf:influencer
+# Wan 2.1 VAE, fp32 safetensors conversion first published by Kijai (0.51 GB); the guide's default decoder.
+# source: https://huggingface.co/Kijai/WanVideo_comfy
+# licence: none stated; terms: upstream Wan-AI/Wan2.1-T2V-14B, apache-2.0
+# verified: 2026-09-28
+vae|Wan2_1_VAE_fp32.safetensors|hf|Kijai/WanVideo_comfy::Wan2_1_VAE_fp32.safetensors||wf:influencer
+# Wan 2.1 upscale2x VAE for sharp decoding (0.51 GB); decoded with VAE-Utils, then halved.
+# source: https://huggingface.co/spacepxl/Wan2.1-VAE-upscale2x
+# licence: apache-2.0
+# verified: 2026-09-28
+vae|Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors|hf|spacepxl/Wan2.1-VAE-upscale2x::Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors||wf:influencer
+# Face detector for Impact FaceDetailer (52 MB, sha256 717923c1…43e5f). ComfyUI sees models/detection
+# as ultralytics_bbox through extra_model_paths.yaml, so the template names it bbox/face_yolov8m.pt.
+# source: https://huggingface.co/Bingsu/adetailer
+# licence: apache-2.0
+# verified: 2026-09-28
+detection|face_yolov8m.pt|hf|Bingsu/adetailer::face_yolov8m.pt||wf:influencer
+# VOSR 2.0 bundle (6.97 GB). ComfyUI-VOSR2 reads ComfyUI/models/vosr2/VOSR2/ and would fetch these on
+# first use; common.sh links ComfyUI/models/vosr2 -> /workspace/models/vosr2, and provision.sh converts
+# dinov2_vitl14_pretrain.pth -> dinov2_vitl14.safetensors after download (as the VOSR2 README does).
+# source: https://huggingface.co/CSWRY/VOSR
+# licence: apache-2.0 (the card: Qwen-Image-vae-2d follows the Wan2.1 and Qwen-Image terms, both apache-2.0; the DINOv2 weights follow the DINOv2 repo, Apache-2.0)
+# verified: 2026-09-28
+upscale|args.json|hf|CSWRY/VOSR::VOSR2/args.json|vosr2/VOSR2|wf:influencer
+upscale|ema_model.safetensors|hf|CSWRY/VOSR::VOSR2/checkpoints/ema_model.safetensors|vosr2/VOSR2/checkpoints|wf:influencer
+upscale|config.json|hf|CSWRY/VOSR::Qwen-Image-vae-2d/config.json|vosr2/VOSR2/Qwen-Image-vae-2d|wf:influencer
+upscale|diffusion_pytorch_model.safetensors|hf|CSWRY/VOSR::Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors|vosr2/VOSR2/Qwen-Image-vae-2d|wf:influencer
+upscale|dinov2_vitl14_pretrain.pth|hf|CSWRY/VOSR::torch_cache/checkpoints/dinov2_vitl14_pretrain.pth|vosr2/VOSR2|wf:influencer
+# Look LoRAs for Krea 2 (loras/looks/, 0.99 GB for the five active ones). Aesthetic Amateur V4 and the
+# Smartphone slider stay commented out: Civitai lists no Image commercial use (Licence_Gate, Req 2.6).
+# Whatever a look LoRA's own permissions, its outputs are Krea 2 outputs under the Krea conditions.
+# NiceGirls UltraReal v1.0 Krea2 (0.11 GB)
+# source: https://civitai.com/models/1862761?modelVersionId=3075498
+# licence: Civitai permissions: commercial use Image, RentCivit, Rent, Sell, SellMerge; credit required; derivatives not allowed; relicensing allowed
+# verified: 2026-09-28
+lora|nicegirls_krea2.safetensors|civitai|3075498|loras/looks|wf:influencer
+# Aesthetic Amateur Photo, Krea V4 (0.23 GB)
+# source: https://civitai.com/models/689192?modelVersionId=3284331
+# licence: Civitai permissions: commercial use RentCivit; credit not required; derivatives allowed; relicensing allowed
+# verified: 2026-09-28
+# Commented out: fails the Licence_Gate (Civitai lists no Image commercial use), Req 2.6.
+# lora|Krea_Amateur_V4.safetensors|civitai|3284331|loras/looks|wf:influencer
+# Realistic Snapshot, Krea2 v0.5 (0.23 GB)
+# source: https://civitai.com/models/2268008?modelVersionId=3084537
+# licence: Civitai permissions: commercial use Image, RentCivit, Rent, Sell, SellMerge; credit not required; derivatives allowed; relicensing allowed
+# verified: 2026-09-28
+lora|RealisticSnapshotKrea2.safetensors|civitai|3084537|loras/looks|wf:influencer
+# Elusarca's Krea 2 Smartphone Photography Slider v1.0 (0.03 GB)
+# source: https://civitai.com/models/2796343?modelVersionId=3151907
+# licence: Civitai permissions: commercial use RentCivit, Rent; credit not required; derivatives allowed; relicensing not allowed
+# verified: 2026-09-28
+# Commented out: fails the Licence_Gate (Civitai lists no Image commercial use), Req 2.6.
+# lora|krea-smartphone-photo-slider.safetensors|civitai|3151907|loras/looks|wf:influencer
+# Add Micro Details v1.0_Krea2 (0.23 GB)
+# source: https://civitai.com/models/1377820?modelVersionId=3298811
+# licence: Civitai permissions: commercial use Image, RentCivit, Sell, Rent, SellMerge; credit not required; derivatives allowed; relicensing allowed
+# verified: 2026-09-28
+lora|AddMicroDetails_Krea2_v1.safetensors|civitai|3298811|loras/looks|wf:influencer
+# Krea 2 Realistic Skin Texture v1.0 (0.19 GB; trained words "inline-skin-lora, detailed skin texture")
+# source: https://civitai.com/models/2808600?modelVersionId=3167109
+# licence: Civitai permissions: commercial use Image, RentCivit, Rent, Sell, SellMerge; credit not required; derivatives allowed; relicensing allowed
+# verified: 2026-09-28
+lora|inline-skin-lora-krea-2-raw.safetensors|civitai|3167109|loras/looks|wf:influencer
+# Krea 2 Emotion Enhancer, "Evil Smile/Grin/Smirk" (0.23 GB)
+# source: https://civitai.com/models/2758632?modelVersionId=3105008
+# licence: Civitai permissions: commercial use RentCivit, Image, Rent; credit not required; derivatives not allowed; relicensing not allowed
+# verified: 2026-09-28
+lora|ImprovedEvilSmile_Krea2.safetensors|civitai|3105008|loras/looks|wf:influencer
+# Krea 2 realism guide by nsfwVariant (Civitai model 2749367, zip of two graphs). Only krea2_simple.json
+# is installed, so config/patches/krea2_simple.json.patch.json can point it at the installed files.
+# source: https://civitai.com/models/2749367?modelVersionId=3092832
+# licence: Civitai permissions: commercial use Image, RentCivit, Rent; credit not required; derivatives allowed; relicensing allowed
+# verified: 2026-09-28
+workflow|krea2_simple.json|civitai|3092832::krea2_simple.json||wf:influencer
+# Krea 2 Identity Edit LoRA (lbouaraba): commented out until an official download host for the LoRA
+# is confirmed (2026-09-28: the linked HF file answered HTTP 401 and only mirrors were found).
+# Carousel slides use Qwen-Image-Edit-2511 instead.
+# lora|krea2_identity_edit_v1_2.safetensors|hf|<official-repo>::krea2_identity_edit_v1_2.safetensors||wf:influencer
+# Krea2-Reference LoRA (KonokoAz): commented out, its source is unconfirmed (2026-09-28).
+# lora|krea2_reference.safetensors|hf|<official-repo>::krea2_reference.safetensors||wf:influencer
 
 # ===== flux (opt-in: not in `all`) ======================================
 # black-forest-labs/FLUX.2-klein-9B requires APPROVAL, not just a click-through

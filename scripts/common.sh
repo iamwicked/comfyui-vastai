@@ -14,10 +14,11 @@ if [ -z "${PYTHON:-}" ]; then
   else PYTHON="$(command -v python3 || echo python3)"; fi
 fi
 USER_DIR="${USER_DIR:-$WORKSPACE/comfyui-user}"
+MODELS_DIR="${MODELS_DIR:-$WORKSPACE/models}"
 OLLAMA_MODELS_DIR="${OLLAMA_MODELS_DIR:-$WORKSPACE/ollama-models}"
 OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-10m}"
 MIN_FREE_GB="${MIN_FREE_GB:-40}"
-export CONFIG_DIR WORKSPACE COMFYUI_DIR PYTHON USER_DIR OLLAMA_MODELS_DIR
+export CONFIG_DIR WORKSPACE COMFYUI_DIR PYTHON USER_DIR MODELS_DIR OLLAMA_MODELS_DIR
 
 TAG="${TAG:-setup}"
 say()  { echo "[$TAG] $*"; }
@@ -55,8 +56,10 @@ comfy_ctl() { # $1: stop|start|restart
 }
 
 # ---- versions ----
-comfyui_version() {
-  sed -n 's/^__version__ *= *"\(.*\)".*/\1/p' "$COMFYUI_DIR/comfyui_version.py" 2>/dev/null | head -1
+comfyui_version() { # prints the version, or nothing; never fails (callers run under set -e)
+  local f="$COMFYUI_DIR/comfyui_version.py"
+  [ -f "$f" ] || return 0
+  sed -n 's/^__version__ *= *"\(.*\)".*/\1/p' "$f" | head -n 1 || true
 }
 version_ge() { # $1 >= $2 ?
   [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" = "$2" ]
@@ -114,10 +117,14 @@ check_disk() {
 ensure_model_paths() {
   local src="$REPO_DIR/extra_model_paths.yaml" dst="$COMFYUI_DIR/extra_model_paths.yaml" d
   [ -f "$src" ] || { warn "missing $src"; return 0; }
+  if [ ! -d "$COMFYUI_DIR" ]; then
+    warn "ComfyUI not found at $COMFYUI_DIR: use Vast's ComfyUI template, or set COMFYUI_DIR"
+    return 1
+  fi
   # Create every relative folder the yaml maps (skips base_path / is_default).
-  for d in $(awk -F': *' '/^  [a-z_]+: [^\/].*\/$/ {sub(/\/$/, "", $2); print $2}' "$src"); do
-    mkdir -p "$WORKSPACE/models/$d"
-  done
+  while IFS= read -r d; do
+    if [ -n "$d" ]; then mkdir -p "$MODELS_DIR/$d"; fi
+  done < <(awk -F': *' '/^  [a-z_]+: [^\/].*\/$/ {sub(/\/$/, "", $2); print $2}' "$src")
   if [ ! -f "$dst" ] || ! cmp -s "$src" "$dst"; then
     if [ -f "$dst" ] && ! grep -q 'managed by comfyui-vastai' "$dst"; then
       cp -f "$dst" "$dst.bak.$(date +%Y%m%d%H%M%S)"
@@ -127,6 +134,45 @@ ensure_model_paths() {
     say "installed $dst (ComfyUI reads it at startup)"
     NEED_RESTART=1
   fi
+  ensure_pack_model_link vosr2 || true   # it warns itself; the install goes on
+}
+
+# A node pack that reads ComfyUI/models/<name> itself instead of through extra_model_paths.yaml
+# (ComfyUI-VOSR2) gets that folder as a link to $MODELS_DIR/<name>, so its weights live on the
+# volume. The pack resolves the path when a Job loads it, so NEED_RESTART stays as it is.
+ensure_pack_model_link() { # $1 folder name
+  local target="$MODELS_DIR/$1" link="$COMFYUI_DIR/models/$1" lost
+  mkdir -p "$target" "$COMFYUI_DIR/models"
+  if [ -L "$link" ]; then
+    if [ "$(readlink "$link")" != "$target" ]; then warn "$link is a link to $(readlink "$link"), not $target; left as it is"; fi
+    return 0
+  fi
+  if [ -d "$link" ]; then
+    # Move the folder's files over without overwriting any, and replace the folder only when
+    # every file it holds now exists in the target too.
+    cp -Rn "$link/." "$target/" 2>/dev/null || true
+    lost="$(cd "$link" && find . \( -type f -o -type l \) -print | while IFS= read -r f; do
+      if [ ! -e "$target/$f" ] && [ ! -L "$target/$f" ]; then printf '%s\n' "$f"; fi
+    done)"
+    if [ -n "$lost" ]; then
+      warn "could not move every file of $link to $target; left the folder in place"
+      return 1
+    fi
+    rm -rf "$link"
+    say "moved the files of $link to $target"
+  elif [ -e "$link" ]; then
+    warn "$link is a file, not a folder; left as it is (a node pack reads a folder there)"
+    return 1
+  fi
+  ln -s "$target" "$link"
+  say "linked $link -> $target"
+}
+
+# ---- system tools a workflow needs (apt package named like the tool) ----
+need_tool() { # $1 tool; 0 when it is on PATH or installed now, non-zero otherwise
+  command -v "$1" >/dev/null 2>&1 && return 0
+  say "installing $1"
+  apt_install "$1" || { warn "could not install $1"; return 1; }
 }
 
 # ---- user dir: workflows + settings live in $USER_DIR, linked into ComfyUI ----

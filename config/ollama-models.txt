@@ -4,7 +4,8 @@
 # Catalog: https://ollama.com/library
 
 # General prompt expansion (comfyui-ollama OllamaGenerate). Append /nothink to skip Qwen3 reasoning.
-qwen3:8b
+# licence: apache-2.0 (Ollama licence layer: Apache License 2.0; upstream Qwen/Qwen3-8B)
+qwen3:8b|wf:global,influencer
 # Uncensored prompt enhancer for krea2's NSFW LLM workflow (Plush Advanced Prompt Enhancer)
 dolphin3:8b|wf:krea2
 

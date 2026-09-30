@@ -1,4 +1,4 @@
-# ComfyUI + Ollama on Vast.ai — reproducible sessions (v6)
+# ComfyUI + Ollama on Vast.ai — reproducible sessions (v7)
 
 Turns a **stock Vast.ai ComfyUI template** instance into a full image + video
 workstation. One command per workflow (or one template setting for all of them)
@@ -19,6 +19,9 @@ In your copy of Vast's ComfyUI template (Edit → Environment Variables):
 | `PROVISIONING_SCRIPT` | `https://raw.githubusercontent.com/iamwicked/comfyui-vastai/main/scripts/vast-provision.sh` |
 | `WORKFLOWS` | the ids you want, comma-separated, e.g. `krea2,wan-animate` (or `all`) |
 | `UPDATE_COMFYUI` | optional: `1` moves ComfyUI core to the newest release first (MiniMax H3 needs >= 0.30.0) |
+
+Delete the template's `PROVISIONING_COMFYUI_WORKFLOWS` row: if its example-workflow
+downloads fail, Vast stops before it runs this repo's script (REFERENCE.md §2A).
 
 Put `HF_TOKEN` and `CIVITAI_TOKEN` in Vast's account-level Environment Variables
 (Settings), or in the template if it stays private. Rent with the template: Vast runs
@@ -53,7 +56,31 @@ workflow from the Workflows menu. `stock-setup.sh status` shows what's installed
 | `global` | Z-Image Turbo checkpoint, general nodes, `qwen3:8b` | 11 |
 | `flux` | Opt-in Flux.2 Klein 9B support files (not in `all`) | 9 |
 
-`all` is everything except `flux`: about 290 GB.
+`all` is every id with `in_all=yes` in `config/catalog.txt`, so it now includes
+`influencer`. The v6 figure was about 290 GB; the v7 total is not yet measured
+(REFERENCE.md §13.11).
+
+## AI influencer pipeline
+
+Weekly stills (and later Reels) for one fictional adult persona, planned on the Mac and
+rendered on the Instance. Four Catalog ids:
+
+| id | What it is | GB |
+|---|---|---|
+| `influencer` | Krea 2 Raw stills, Qwen-Image-Edit-2511 carousel edits, face detail, VOSR2 finish, DeGrid | 107.7 (102.1 new), measured 2026-09-28 |
+| `influencer-video` | MiniMax H3 Reels. Not yet available — arrives in Phase 3 | not yet measured |
+| `influencer-nsfw` | adult-content LoRAs for platform-`other` Posts. Not yet available — arrives in Phase 4 | not yet measured |
+| `character-design` | sketch to Hero_Image and character sheets. Not yet available — arrives in Phase 4 | not yet measured |
+
+Install on the Instance (tokens exported as above):
+
+```bash
+bash /workspace/comfyui-vastai/scripts/install-workflow.sh influencer
+```
+
+The tools run through `bash scripts/influencer.sh <command>` (`--help` lists them). The
+Runbook, with the weekly checklist, disk table and licences, is
+[REFERENCE.md §13](REFERENCE.md#13-ai-influencer-pipeline-runbook).
 
 ## Between sessions
 
@@ -78,6 +105,9 @@ scripts/install-workflow.sh   one workflow (what stock-setup.sh <id> runs)
 scripts/provision.sh      the engine (nodes, models, Ollama; --status)
 extra_model_paths.yaml    points ComfyUI at /workspace/models
 scripts/save-progress.sh  optional off-box backup (git + rclone copy)
+scripts/influencer.sh     the AI influencer tools (plan, render, finish, export, checks)
+scripts/check.sh          every check and test in one command (the Check_Suite)
+config/influencer/        templates, LUTs, licence lists, example persona and calendars
 ```
 
 ## Security notes

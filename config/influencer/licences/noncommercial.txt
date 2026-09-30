@@ -1,0 +1,13 @@
+# Licence identifiers whose terms do not permit commercial use of outputs (Licence_Gate).
+# An identifier is a Hugging Face `license` value, or `license_name` when `license` is `other`.
+qwen-research                       # Qwen/Qwen-Image-2.1 (Qwen Research License)
+flux-1-dev-non-commercial-license   # black-forest-labs/FLUX.1-dev
+flux-non-commercial-license         # black-forest-labs/FLUX.2-klein-9B
+cc-by-nc-2.0
+cc-by-nc-3.0
+cc-by-nc-4.0
+cc-by-nc-nd-3.0
+cc-by-nc-nd-4.0
+cc-by-nc-sa-2.0
+cc-by-nc-sa-3.0
+cc-by-nc-sa-4.0

@@ -1,0 +1,122 @@
+{
+  "format": "influencer-render-template/1",
+  "meta": {
+    "name": "edit",
+    "kind": "edit",
+    "catalog_id": "influencer",
+    "identity_required": false,
+    "timeout_s": 900,
+    "output_node": "16",
+    "placeholders": {
+      "reference_image": {"type": "file"},
+      "scene": {"type": "text"},
+      "seed": {"type": "int", "min": 0, "max": 4294967295},
+      "width": {"type": "int", "min": 256, "max": 2048},
+      "height": {"type": "int", "min": 256, "max": 2048},
+      "output_prefix": {"type": "text"}
+    },
+    "sizes": {
+      "3:4": {"output": [864, 1152]},
+      "4:5": {"output": [896, 1120]}
+    },
+    "node_packs": {
+      "UNETLoader": "core",
+      "ModelSamplingAuraFlow": "core",
+      "CFGNorm": "core",
+      "CLIPLoader": "core",
+      "VAELoader": "core",
+      "LoadImage": "core",
+      "ImageScale": "core",
+      "TextEncodeQwenImageEditPlus": "core",
+      "FluxKontextMultiReferenceLatentMethod": "core",
+      "VAEEncode": "core",
+      "KSampler": "core",
+      "VAEDecode": "core",
+      "VAEDeGrid": "ComfyUI-DeGrid",
+      "SaveImage": "core"
+    },
+    "models": [
+      {"kind": "diffusion", "folder": "diffusion_models", "name": "qwen_image_edit_2511_bf16.safetensors"},
+      {"kind": "text_encoder", "folder": "text_encoders", "name": "qwen_2.5_vl_7b.safetensors"},
+      {"kind": "vae", "folder": "vae", "name": "qwen_image_vae.safetensors"}
+    ],
+    "extra_files": []
+  },
+  "prompt": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {"unet_name": "qwen_image_edit_2511_bf16.safetensors", "weight_dtype": "default"}
+    },
+    "2": {
+      "class_type": "ModelSamplingAuraFlow",
+      "inputs": {"model": ["1", 0], "shift": 3.1}
+    },
+    "3": {
+      "class_type": "CFGNorm",
+      "inputs": {"model": ["2", 0], "strength": 1.0}
+    },
+    "4": {
+      "class_type": "CLIPLoader",
+      "inputs": {"clip_name": "qwen_2.5_vl_7b.safetensors", "type": "qwen_image", "device": "default"}
+    },
+    "5": {
+      "class_type": "VAELoader",
+      "inputs": {"vae_name": "qwen_image_vae.safetensors"}
+    },
+    "6": {
+      "class_type": "LoadImage",
+      "inputs": {"image": "{{reference_image}}"}
+    },
+    "7": {
+      "class_type": "ImageScale",
+      "inputs": {"image": ["6", 0], "upscale_method": "lanczos", "width": "{{width}}", "height": "{{height}}", "crop": "center"}
+    },
+    "8": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {
+        "clip": ["4", 0],
+        "vae": ["5", 0],
+        "image1": ["6", 0],
+        "prompt": "Keep the person, the outfit and the location of Picture 1 exactly as they are: the same face, hair, body, skin, clothing, jewellery, background and light. Show another moment of the same scene, taken with the same phone camera: {{scene}}"
+      }
+    },
+    "9": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {"clip": ["4", 0], "vae": ["5", 0], "image1": ["6", 0], "prompt": ""}
+    },
+    "10": {
+      "class_type": "FluxKontextMultiReferenceLatentMethod",
+      "inputs": {"conditioning": ["8", 0], "reference_latents_method": "index_timestep_zero"}
+    },
+    "11": {
+      "class_type": "FluxKontextMultiReferenceLatentMethod",
+      "inputs": {"conditioning": ["9", 0], "reference_latents_method": "index_timestep_zero"}
+    },
+    "12": {
+      "class_type": "VAEEncode",
+      "inputs": {"pixels": ["7", 0], "vae": ["5", 0]}
+    },
+    "13": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["3", 0], "positive": ["10", 0], "negative": ["11", 0], "latent_image": ["12", 0],
+        "seed": "{{seed}}", "steps": 40, "cfg": 4.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0
+      }
+    },
+    "14": {
+      "class_type": "VAEDecode",
+      "inputs": {"samples": ["13", 0], "vae": ["5", 0]}
+    },
+    "15": {
+      "class_type": "VAEDeGrid",
+      "inputs": {
+        "image": ["14", 0], "enabled": true, "mode": "auto", "limit": 0.02, "skip_when_clean": true,
+        "grid_gain": 10.0, "grid_view": "4x zoom"
+      }
+    },
+    "16": {
+      "class_type": "SaveImage",
+      "inputs": {"images": ["15", 0], "filename_prefix": "{{output_prefix}}"}
+    }
+  }
+}

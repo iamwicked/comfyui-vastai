@@ -1,0 +1,21 @@
+# The example Content_Calendar (design §M2; Req 5, 26.12), written for the Persona_Example (persona.yaml):
+# a single Post with 2 Candidates, a 5-Slide carousel at 4:5, a story, a reel whose first frame is Slide 2
+# of the carousel, and a reel whose video comes from outside the pipeline (mode external). calendar.csv
+# holds the same week as a spreadsheet. To plan a week, run `new-calendar --week <Week_Id>` (add --csv
+# for a spreadsheet) and edit the file it writes to <Influencer_Root>/weeks/<Week_Id>/.
+#
+# Every Post has an id (1-48 of a-z, 0-9 and -), a type (single, carousel, story or reel) and a date.
+# Location and outfit names are the Persona_File's; single, carousel and story Posts need both. Optional:
+# platform (instagram, the default, or other), idea, aspect ("3:4" or "4:5", quoted), slides (2-20, for
+# carousels), candidates (1-4), mode (carousel: regenerate; reel: reference or external), looks, and for
+# reels duration (5-10 s), source_post and source_slide, dialogue and voice.
+week: 2026-W40
+posts:
+  - {id: mon-cafe, type: single, date: 2026-09-28, location: corner-cafe, outfit: linen-set,
+     idea: "first coffee of the week, reading by the window", candidates: 2}
+  - {id: tue-street, type: carousel, date: 2026-09-29, location: old-town-street, outfit: denim-knit,
+     slides: 5, aspect: "4:5", idea: "a slow walk to the bakery"}
+  - {id: wed-story, type: story, date: 2026-09-30, location: loft-apartment, outfit: linen-set}
+  - {id: thu-reel, type: reel, date: 2026-10-01, duration: 8, source_post: tue-street, source_slide: 2,
+     idea: "she turns towards the camera and laughs"}
+  - {id: fri-dance, type: reel, date: 2026-10-02, mode: external, duration: 10}

@@ -1,0 +1,117 @@
+{
+  "format": "influencer-render-template/1",
+  "meta": {
+    "name": "still",
+    "kind": "still",
+    "catalog_id": "influencer",
+    "identity_required": true,
+    "timeout_s": 900,
+    "output_node": "15",
+    "placeholders": {
+      "prompt": {"type": "text"},
+      "seed": {"type": "int", "min": 0, "max": 4294967295},
+      "latent_width": {"type": "int", "min": 256, "max": 2048},
+      "latent_height": {"type": "int", "min": 256, "max": 2048},
+      "width": {"type": "int", "min": 256, "max": 2048},
+      "height": {"type": "int", "min": 256, "max": 2048},
+      "crop_x": {"type": "int", "min": 0, "max": 64},
+      "crop_y": {"type": "int", "min": 0, "max": 64},
+      "output_prefix": {"type": "text"},
+      "loras": {
+        "type": "lora_list", "max_items": 16, "strength_min": -2.0, "strength_max": 2.0,
+        "source": ["4", 0], "loader": "LoraLoaderModelOnly",
+        "loader_inputs": {"model": "$prev", "lora_name": "$name", "strength_model": "$strength"}
+      }
+    },
+    "sizes": {
+      "3:4": {"latent": [1440, 1920], "output": [1440, 1920], "crop": [0, 0]},
+      "4:5": {"latent": [1536, 1920], "output": [1536, 1920], "crop": [0, 0]},
+      "9:16": {"latent": [1088, 1920], "output": [1080, 1920], "crop": [4, 0]}
+    },
+    "node_packs": {
+      "UNETLoader": "core",
+      "CLIPLoader": "core",
+      "VAELoader": "core",
+      "LoraLoaderModelOnly": "core",
+      "CLIPTextEncode": "core",
+      "EmptyLatentImage": "core",
+      "ClownsharKSampler_Beta": "RES4LYF",
+      "VAEDecode": "core",
+      "VAEDeGrid": "ComfyUI-DeGrid",
+      "ImageCrop": "core",
+      "SaveImage": "core"
+    },
+    "models": [
+      {"kind": "diffusion", "folder": "diffusion_models", "name": "krea2_raw_bf16.safetensors"},
+      {"kind": "text_encoder", "folder": "text_encoders", "name": "qwen3vl_4b_bf16.safetensors"},
+      {"kind": "vae", "folder": "vae", "name": "Wan2_1_VAE_fp32.safetensors"},
+      {"kind": "lora", "folder": "loras", "name": "krea2_turbo_lora_rank_64_bf16.safetensors"}
+    ],
+    "extra_files": []
+  },
+  "prompt": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {"unet_name": "krea2_raw_bf16.safetensors", "weight_dtype": "default"}
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {"clip_name": "qwen3vl_4b_bf16.safetensors", "type": "krea2", "device": "default"}
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {"vae_name": "Wan2_1_VAE_fp32.safetensors"}
+    },
+    "4": {
+      "class_type": "LoraLoaderModelOnly",
+      "inputs": {"model": ["1", 0], "lora_name": "krea2_turbo_lora_rank_64_bf16.safetensors", "strength_model": 0.6}
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {"clip": ["2", 0], "text": "{{prompt}}"}
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {"clip": ["2", 0], "text": ""}
+    },
+    "7": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {"width": "{{latent_width}}", "height": "{{latent_height}}", "batch_size": 1}
+    },
+    "10": {
+      "class_type": "ClownsharKSampler_Beta",
+      "inputs": {
+        "model": "{{loras}}", "positive": ["5", 0], "negative": ["6", 0], "latent_image": ["7", 0],
+        "eta": 0.5, "sampler_name": "exponential/res_2s", "scheduler": "beta", "steps": 6, "steps_to_run": -1,
+        "denoise": 1.0, "cfg": 1.0, "seed": "{{seed}}", "sampler_mode": "standard", "bongmath": true
+      }
+    },
+    "11": {
+      "class_type": "ClownsharKSampler_Beta",
+      "inputs": {
+        "model": "{{loras}}", "positive": ["5", 0], "negative": ["6", 0], "latent_image": ["10", 0],
+        "eta": 0.5, "sampler_name": "multistep/deis_3m", "scheduler": "bong_tangent", "steps": 2, "steps_to_run": -1,
+        "denoise": 0.2, "cfg": 1.0, "seed": "{{seed}}", "sampler_mode": "standard", "bongmath": true
+      }
+    },
+    "12": {
+      "class_type": "VAEDecode",
+      "inputs": {"samples": ["11", 0], "vae": ["3", 0]}
+    },
+    "13": {
+      "class_type": "VAEDeGrid",
+      "inputs": {
+        "image": ["12", 0], "enabled": true, "mode": "auto", "limit": 0.02, "skip_when_clean": true,
+        "grid_gain": 10.0, "grid_view": "4x zoom"
+      }
+    },
+    "14": {
+      "class_type": "ImageCrop",
+      "inputs": {"image": ["13", 0], "width": "{{width}}", "height": "{{height}}", "x": "{{crop_x}}", "y": "{{crop_y}}"}
+    },
+    "15": {
+      "class_type": "SaveImage",
+      "inputs": {"images": ["14", 0], "filename_prefix": "{{output_prefix}}"}
+    }
+  }
+}

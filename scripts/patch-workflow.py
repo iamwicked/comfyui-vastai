@@ -25,6 +25,7 @@ Usage: patch-workflow.py <workflow.json> <patch.json>
 """
 import json
 import os
+import stat
 import sys
 import tempfile
 
@@ -115,10 +116,17 @@ def main(path, patch_path):
         return
     indent = 2 if raw.lstrip().startswith("{\n") or raw[:3] == "{\n " else None
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), suffix=".tmp")
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(wf, fh, ensure_ascii=False, indent=indent)
-        fh.write("\n")
-    os.replace(tmp, path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(wf, fh, ensure_ascii=False, indent=indent)
+            fh.write("\n")
+        # mkstemp creates the file 0600; keep the workflow's own permissions instead.
+        os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
     print(f"  {changes} change(s) written")
 
 

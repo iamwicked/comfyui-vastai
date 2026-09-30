@@ -63,7 +63,7 @@ EOF
 phase_workflow() { bash "$SCRIPT_DIR/install-workflow.sh" "$1"; }
 
 phase_finish() {
-  local rc=0
+  local rc=0 f
   ensure_prereqs
   ensure_model_paths
   ensure_user_link
@@ -76,7 +76,9 @@ phase_finish() {
   bash "$SCRIPT_DIR/provision.sh" --status || true
   echo
   say "workflows in ComfyUI (hard-refresh the browser tab):"
-  ls -1 "$USER_DIR/default/workflows" 2>/dev/null | sed 's/^/    /' || true
+  for f in "$USER_DIR/default/workflows"/*; do
+    if [ -e "$f" ]; then echo "    ${f##*/}"; fi
+  done
   return "$rc"
 }
 

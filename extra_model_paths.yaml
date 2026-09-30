@@ -10,6 +10,7 @@ vastai:
   configs: configs/
   controlnet: controlnet/
   detection: detection/
+  ultralytics_bbox: detection/
   diffusion_models: diffusion_models/
   embeddings: embeddings/
   latent_upscale_models: latent_upscale_models/

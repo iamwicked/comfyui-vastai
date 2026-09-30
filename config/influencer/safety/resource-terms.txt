@@ -1,0 +1,44 @@
+# Config_Checker resource terms (design §M14; Req 26.8, 26.17): face, head and body swap tools, deepfakes,
+# age sliders and de-aging. No Config_Lists line (comment lines included) and no node pack in a
+# Render_Template's node-class-to-pack map may name one. Checked only by the Config_Checker, together with
+# minor-terms.txt and by the same whole-word matcher, so a one-word spelling needs its own line.
+# UTF-8, one term per line; "#" starts a comment.
+
+# ---- design §M14 ----
+face swap
+faceswap
+face swapper
+head swap
+headswap
+body swap
+bodyswap
+deepfake
+deep fake
+reactor
+roop
+age slider
+age sliders
+de-aging
+age regression
+
+# ---- plurals, one-word spellings and named face-swap tools ----
+face swaps
+faceswaps
+face swapping
+faceswapping
+faceswapper
+head swapping
+body swapping
+deepfakes
+deep fakes
+deaging
+de-age
+deage
+ageslider
+agesliders
+inswapper
+simswap
+facefusion
+faceswaplab
+deepfacelab
+deepfacelive

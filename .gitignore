@@ -10,3 +10,10 @@ __pycache__/
 .staging/
 .provision/
 *.part
+# influencer pipeline: local Influencer_Root and character LoRAs, and the
+# Check_Suite's env and caches (anchored so scripts/influencer/ stays tracked)
+/influencer/
+/models/loras/characters/
+/.check-venv/
+.pytest_cache/
+.hypothesis/

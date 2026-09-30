@@ -12,5 +12,9 @@ krea-style|yes||Krea 2 Turbo style reference (1-3 style images)
 wan-i2v|yes||Wan2.2 Remix/Painter uncensored image-to-video
 minimax-h3|yes|0.30.0|MiniMax H3 all-in-one: 7 modes + lip sync, native stereo audio
 wan-animate|yes||Wan2.2 Animate: driving-video motion transfer + Instareal realism LoRA
+influencer|yes||AI influencer stills: Krea 2 Raw realism recipe, carousel edits, face detail, VOSR2 upscale, DeGrid
 global|yes||Shared extras: Z-Image Turbo checkpoint, general-purpose nodes, qwen3:8b
 flux|no||Flux.2 Klein 9B support files (base needs HF approval; workflows disabled)
+influencer-video|no|0.30.0|AI influencer Reels: MiniMax H3 image- and reference-to-video, H3 look LoRAs, ffmpeg
+influencer-nsfw|no||NSFW add-on for platform-other posts: loras/nsfw + dolphin3:8b; install influencer and influencer-video as separate ids
+character-design|no||Krea 2 sketch-to-hero (lineart edit) and QuadView/DynamicCharacterSheet character sheets

@@ -1,0 +1,13 @@
+{
+  "description": "Krea 2 realism guide by nsfwVariant (Civitai 3092832, member krea2_simple.json) -> influencer. Points the VAE loader at the installed Kijai fp32 Wan 2.1 VAE, fills the turbo LoRA slot with krea2_turbo_lora_rank_64_bf16.safetensors @ 0.6, and turns the paid 2-vector filter-bypass slot off (rgthree's \"None\" entry names no file). UNETLoader #316 already names krea2_raw_bf16.safetensors and CLIPLoader #317 names qwen3vl_4b_bf16.safetensors, the installed files, so neither needs a row.",
+  "set_widgets": [
+    {"node_type": "VAELoader", "node_id": 210, "index": 0,
+     "expect": "wan21_vae_fp32.safetensors", "value": "Wan2_1_VAE_fp32.safetensors"},
+    {"node_type": "Power Lora Loader (rgthree)", "node_id": 315, "index": 2,
+     "expect": {"on": true, "lora": "TURBO_LORA_HERE.safetensors", "strength": 0.6, "strengthTwo": null},
+     "value": {"on": true, "lora": "krea2_turbo_lora_rank_64_bf16.safetensors", "strength": 0.6, "strengthTwo": null}},
+    {"node_type": "Power Lora Loader (rgthree)", "node_id": 315, "index": 3,
+     "expect": {"on": true, "lora": "FILTER_BYPASS_LORA_HERE.safetensors", "strength": 1, "strengthTwo": null},
+     "value": {"on": false, "lora": "None", "strength": 1, "strengthTwo": null}}
+  ]
+}

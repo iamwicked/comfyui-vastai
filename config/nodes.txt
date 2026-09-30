@@ -10,7 +10,7 @@
 
 # --- general-purpose (global, plus the workflows that load them) ---
 https://github.com/cubiq/ComfyUI_essentials||wf:global,wan-animate
-https://github.com/rgthree/rgthree-comfy||wf:global,minimax-h3
+https://github.com/rgthree/rgthree-comfy||wf:global,minimax-h3,influencer
 https://github.com/kijai/ComfyUI-KJNodes||wf:global,minimax-h3,wan-animate
 https://github.com/Fannovel16/comfyui_controlnet_aux|
 https://github.com/pythongosssss/ComfyUI-Custom-Scripts|
@@ -24,7 +24,7 @@ https://github.com/princepainter/ComfyUI-PainterI2V||wf:wan-i2v
 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation||wf:wan-i2v
 
 # --- qwen21: res_2s / res_2m samplers (not in core) ---
-https://github.com/ClownsharkBatwing/RES4LYF||wf:qwen21,qwen21-edit
+https://github.com/ClownsharkBatwing/RES4LYF||wf:qwen21,qwen21-edit,influencer
 
 # --- krea2: Advanced Prompt Enhancer (talks to Ollama at 127.0.0.1:11434) ---
 https://github.com/glibsonoran/Plush-for-ComfyUI||wf:krea2
@@ -39,3 +39,32 @@ https://github.com/9nate-drake/Comfyui-SecNodes||wf:wan-animate
 https://github.com/chflame163/ComfyUI_LayerStyle||wf:wan-animate
 https://github.com/M1kep/ComfyLiterals||wf:wan-animate
 https://github.com/evanspearman/ComfyMath||wf:wan-animate
+
+# --- influencer (stills) ---
+# DeGrid: removes the 2 px VAE lattice right after VAE Decode. Skipped and reported when
+# custom_nodes/ComfyUI-SaveSimple exists (same node id VAEDeGrid).
+# source: https://github.com/lunaaispace-eng/ComfyUI-DeGrid
+# licence: Apache-2.0
+# verified: 2026-09-28
+https://github.com/lunaaispace-eng/ComfyUI-DeGrid||wf:influencer
+# source: https://github.com/spacepxl/ComfyUI-VAE-Utils
+# licence: MIT
+# verified: 2026-09-28
+https://github.com/spacepxl/ComfyUI-VAE-Utils||wf:influencer
+# source: https://github.com/ylchen333/ComfyUI-VOSR2
+# licence: Apache-2.0
+# verified: 2026-09-28
+https://github.com/ylchen333/ComfyUI-VOSR2||wf:influencer
+# FaceDetailer. provision.sh creates custom_nodes/skip_download_model first, so install.py does not
+# fetch the unused 375 MB SAM model.
+# source: https://github.com/ltdrdata/ComfyUI-Impact-Pack
+# licence: GPL-3.0
+# verified: 2026-09-28
+https://github.com/ltdrdata/ComfyUI-Impact-Pack||wf:influencer
+# UltralyticsDetectorProvider (bbox/face_yolov8m.pt)
+# source: https://github.com/ltdrdata/ComfyUI-Impact-Subpack
+# licence: AGPL-3.0
+# verified: 2026-09-28
+https://github.com/ltdrdata/ComfyUI-Impact-Subpack||wf:influencer
+# Krea2-Reference (KonokoAz): commented out with its LoRA, source unconfirmed (2026-09-28).
+# https://github.com/KonokoAz/ComfyUI-Krea2-Reference||wf:influencer

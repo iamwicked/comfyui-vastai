@@ -19,6 +19,8 @@
 # stock-setup.sh finish. It always exits 0, so ComfyUI starts even if something
 # failed; the summary at the end lists what to re-run by hand.
 set -uo pipefail
+# Nobody can answer a git password prompt during provisioning: fail fast instead.
+export GIT_TERMINAL_PROMPT=0
 
 REPO_URL="${REPO_URL:-https://github.com/iamwicked/comfyui-vastai.git}"
 REPO_DIR="${REPO_DIR:-/workspace/comfyui-vastai}"

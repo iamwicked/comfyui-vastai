@@ -1,0 +1,53 @@
+{
+  "format": "influencer-render-template/1",
+  "meta": {
+    "name": "edit-fixture",
+    "kind": "edit",
+    "catalog_id": "influencer",
+    "identity_required": false,
+    "output_node": "8",
+    "placeholders": {
+      "reference_image": {"type": "file"},
+      "scene": {"type": "text"}
+    },
+    "sizes": {
+      "3:4": {"output": [864, 1152]},
+      "4:5": {"output": [896, 1120]}
+    },
+    "node_packs": {
+      "CLIPLoader": "core",
+      "LoadImage": "core",
+      "TextEncodeQwenImageEditPlus": "core",
+      "VAELoader": "core"
+    },
+    "models": [],
+    "extra_files": []
+  },
+  "prompt": {
+    "4": {
+      "class_type": "CLIPLoader",
+      "inputs": {"clip_name": "qwen_2.5_vl_7b.safetensors", "type": "qwen_image", "device": "default"}
+    },
+    "5": {
+      "class_type": "VAELoader",
+      "inputs": {"vae_name": "qwen_image_vae.safetensors"}
+    },
+    "6": {
+      "class_type": "LoadImage",
+      "inputs": {"image": "{{reference_image}}"}
+    },
+    "8": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {
+        "clip": ["4", 0],
+        "vae": ["5", 0],
+        "image1": ["6", 0],
+        "prompt": "Keep the person, the outfit and the location of Picture 1 exactly as they are: the same face, hair, body, skin, clothing, jewellery, background and light. Show another moment of the same scene, taken with the same phone camera: {{scene}}"
+      }
+    },
+    "9": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {"clip": ["4", 0], "vae": ["5", 0], "image1": ["6", 0], "prompt": ""}
+    }
+  }
+}
